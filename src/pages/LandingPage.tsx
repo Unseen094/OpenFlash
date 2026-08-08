@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { IconZap, IconPackage, IconFilm, IconMusic, IconPalette, IconWrench, IconArrowRight } from '../components/Icons'
 
 export default function LandingPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -173,8 +174,8 @@ export default function LandingPage() {
           </p>
 
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Link to="/studio" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: 14 }}>
-              Launch Studio →
+            <Link to="/studio" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              Launch Studio <IconArrowRight size={14} />
             </Link>
             <Link to="/arcade" className="btn" style={{ padding: '12px 24px', fontSize: 14 }}>
               Browse Arcade
@@ -263,37 +264,37 @@ export default function LandingPage() {
         }}>
           {[
             {
-              icon: '⚡',
+              icon: <IconZap size={20} />,
               title: 'TypeScript Runtime',
               desc: 'Sandboxed API replacing ActionScript with full physics, collision, and scene management.',
               color: 'var(--accent-yellow)'
             },
             {
-              icon: '📦',
+              icon: <IconPackage size={20} />,
               title: 'Offline Export',
               desc: 'Compile projects into standalone .html files with zero external dependencies.',
               color: 'var(--accent-cyan)'
             },
             {
-              icon: '🎬',
+              icon: <IconFilm size={20} />,
               title: 'Multi-Layer Timeline',
               desc: 'Frame-by-frame animation with motion tweens, onion skinning, and keyframe tools.',
               color: 'var(--accent-magenta)'
             },
             {
-              icon: '🎵',
+              icon: <IconMusic size={20} />,
               title: 'Chiptune Synth',
               desc: 'Built-in retro sound generator and Web Audio matrix directly in the editor.',
               color: 'var(--accent-green)'
             },
             {
-              icon: '🎨',
+              icon: <IconPalette size={20} />,
               title: 'Vector Canvas',
               desc: 'Pen, brush, shape tools with magnetic grid snapping and node adjustment.',
               color: 'var(--accent-orange)'
             },
             {
-              icon: '🔧',
+              icon: <IconWrench size={20} />,
               title: 'Shader FX',
               desc: 'CRT scanlines, chromatic aberration, and bloom overlays for any project.',
               color: 'var(--accent-yellow)'
@@ -317,7 +318,6 @@ export default function LandingPage() {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 18,
                 marginBottom: 16
               }}>
                 {feature.icon}
@@ -356,8 +356,8 @@ export default function LandingPage() {
               Community Feed
             </h2>
           </div>
-          <Link to="/arcade" className="btn btn-ghost">
-            View All →
+          <Link to="/arcade" className="btn btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            View All <IconArrowRight size={13} />
           </Link>
         </div>
 

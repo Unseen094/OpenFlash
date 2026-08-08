@@ -152,6 +152,28 @@ export class AudioEngine {
     osc.stop(this.context.currentTime + 0.03)
   }
 
+  playSound(name: string): void {
+    switch (name) {
+      case 'click':
+        this.playClick()
+        break
+      case 'hit':
+        this.playNoteByName('C5', 'square', 0.1)
+        break
+      case 'jump':
+        this.playNoteByName('A4', 'square', 0.15)
+        setTimeout(() => this.playNoteByName('C5', 'square', 0.1), 80)
+        break
+      case 'shoot':
+        this.playNoteByName('E5', 'sawtooth', 0.12)
+        break
+      case 'explode':
+        this.playNoteByName('C3', 'sawtooth', 0.3)
+        setTimeout(() => this.playNoteByName('C4', 'sawtooth', 0.2), 100)
+        break
+    }
+  }
+
   playRewindEffect(duration = 0.3): void {
     if (!this.context) return
     const osc = this.context.createOscillator()
@@ -172,7 +194,9 @@ export class AudioEngine {
     if (entry) {
       entry.gain.gain.setTargetAtTime(0, this.context!.currentTime, 0.01)
       setTimeout(() => {
-        try { entry.osc.stop() } catch (e) {}
+        try { entry.osc.stop() } catch (e) {
+          console.error('[synth] Oscillator stop failed:', e)
+        }
         this.activeOscillators.delete(id)
       }, 50)
     }

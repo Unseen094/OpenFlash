@@ -15,7 +15,7 @@ export interface OFSprite {
   scaleY: number
   vx: number
   vy: number
-  data: Record<string, any>
+  data: Record<string, unknown>
 }
 
 export interface OFScene {
@@ -68,6 +68,12 @@ export interface OFDrawOptions {
   size?: number
 }
 
+export interface OpenFlashRuntimeOptions {
+  transparent?: boolean
+  dataChannel?: (name: string, value: unknown) => void
+  attachInputHandlers?: boolean
+}
+
 export class OpenFlashRuntime {
   private sprites: Map<string, OFSprite> = new Map()
   private scenes: Map<string, OFScene> = new Map()
@@ -85,10 +91,17 @@ export class OpenFlashRuntime {
   private frameCount = 0
   private fps = 0
   private fpsUpdateTime = 0
+  private transparent = false
+  private dataChannel?: (name: string, value: unknown) => void
+  private attachInputHandlers = true
+  private disposedInputListeners: Array<() => void> = []
 
-  constructor() {
+  constructor(options: OpenFlashRuntimeOptions = {}) {
     this.physics = new PhysicsWorld()
     this.setupStorage()
+    this.transparent = options.transparent || false
+    this.dataChannel = options.dataChannel
+    this.attachInputHandlers = options.attachInputHandlers !== false
   }
 
   private setupStorage(): void {
@@ -97,8 +110,10 @@ export class OpenFlashRuntime {
       if (stored) {
         const data = JSON.parse(stored)
         Object.entries(data).forEach(([k, v]) => this.storage.set(k, v as string))
-      }
-    } catch (e) {}
+       }
+     } catch (e) {
+       console.error('[OF] Failed to load storage:', e)
+     }
   }
 
   private saveStorage(): void {
@@ -106,52 +121,76 @@ export class OpenFlashRuntime {
       const data: Record<string, string> = {}
       this.storage.forEach((v, k) => data[k] = v)
       localStorage.setItem('openflash_storage', JSON.stringify(data))
-    } catch (e) {}
+    } catch (e) {
+      console.error('[OF] Failed to save storage:', e)
+    }
   }
 
   initialize(canvas: HTMLCanvasElement): void {
     this.canvas = canvas
     this.ctx = canvas.getContext('2d') || null
-    this.setupInputHandlers()
+    if (this.attachInputHandlers) {
+      this.setupInputHandlers()
+    }
   }
 
   private setupInputHandlers(): void {
     if (!this.canvas) return
 
-    this.canvas.addEventListener('pointerdown', (e) => {
+    const onPointerDown = (e: PointerEvent) => {
       const rect = this.canvas!.getBoundingClientRect()
+      this._mouseX = e.clientX - rect.left
+      this._mouseY = e.clientY - rect.top
       this.emit({
         type: 'pointerDown',
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       })
-    })
+    }
 
-    this.canvas.addEventListener('pointerup', (e) => {
+    const onPointerUp = (e: PointerEvent) => {
       const rect = this.canvas!.getBoundingClientRect()
       this.emit({
         type: 'pointerUp',
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       })
-    })
+    }
 
-    this.canvas.addEventListener('pointermove', (e) => {
+    const onPointerMove = (e: PointerEvent) => {
       const rect = this.canvas!.getBoundingClientRect()
+      this._mouseX = e.clientX - rect.left
+      this._mouseY = e.clientY - rect.top
       this.emit({
         type: 'pointerMove',
         x: e.clientX - rect.left,
         y: e.clientY - rect.top
       })
-    })
+    }
 
-    window.addEventListener('keydown', (e) => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      this.pressedKeys.add(e.key)
       this.emit({ type: 'keyDown', key: e.key })
-    })
+    }
 
-    window.addEventListener('keyup', (e) => {
+    const onKeyUp = (e: KeyboardEvent) => {
+      this.pressedKeys.delete(e.key)
       this.emit({ type: 'keyUp', key: e.key })
-    })
+    }
+
+    this.canvas.addEventListener('pointerdown', onPointerDown)
+    this.canvas.addEventListener('pointerup', onPointerUp)
+    this.canvas.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keyup', onKeyUp)
+
+    this.disposedInputListeners = [
+      () => this.canvas?.removeEventListener('pointerdown', onPointerDown),
+      () => this.canvas?.removeEventListener('pointerup', onPointerUp),
+      () => this.canvas?.removeEventListener('pointermove', onPointerMove),
+      () => window.removeEventListener('keydown', onKeyDown),
+      () => window.removeEventListener('keyup', onKeyUp)
+    ]
   }
 
   on(event: OFEventType, handler: OFEventHandler): () => void {
@@ -166,6 +205,15 @@ export class OpenFlashRuntime {
         if (idx >= 0) handlers.splice(idx, 1)
       }
     }
+  }
+
+  dispatchEvent(type: OFEventType, data: Partial<OFEvent> = {}): void {
+    if (type === 'keyDown' && data.key) {
+      this.pressedKeys.add(data.key)
+    } else if (type === 'keyUp' && data.key) {
+      this.pressedKeys.delete(data.key)
+    }
+    this.emit({ type, ...data } as OFEvent)
   }
 
   private emit(event: OFEvent): void {
@@ -196,7 +244,7 @@ export class OpenFlashRuntime {
       scaleY: 1,
       vx: 0,
       vy: 0,
-      data: {}
+      data: options.color ? { color: options.color } : {}
     }
     this.sprites.set(sprite.name, sprite)
     if (this.currentScene) {
@@ -204,6 +252,23 @@ export class OpenFlashRuntime {
     }
     return sprite
   }
+
+  clear(): void {
+    this.sprites.clear()
+    this.particles = []
+    if (this.currentScene) {
+      this.currentScene.sprites.clear()
+    }
+    if (this.ctx) {
+      this.ctx.clearRect(0, 0, this.canvas?.width || 0, this.canvas?.height || 0)
+    }
+  }
+
+  isKeyDown(key: string): boolean {
+    return this.pressedKeys.has(key)
+  }
+
+  private pressedKeys: Set<string> = new Set()
 
   removeSprite(name: string): void {
     this.sprites.delete(name)
@@ -266,7 +331,10 @@ export class OpenFlashRuntime {
 
   playSound(type: 'hit' | 'jump' | 'shoot' | 'explode' | 'click' = 'click'): void {
     if (!this.audioContext) {
-      try { this.audioContext = new AudioContext() } catch (e) { return }
+      try { this.audioContext = new AudioContext() } catch (e) {
+        console.error('[OF] AudioContext creation failed:', e)
+        return
+      }
     }
     const ctx = this.audioContext
     const osc = ctx.createOscillator()
@@ -431,8 +499,12 @@ export class OpenFlashRuntime {
     const w = this.canvas.width
     const h = this.canvas.height
 
-    ctx.fillStyle = this.currentScene?.backgroundColor || '#0A0B0E'
-    ctx.fillRect(0, 0, w, h)
+    if (this.transparent) {
+      ctx.clearRect(0, 0, w, h)
+    } else {
+      ctx.fillStyle = this.currentScene?.backgroundColor || '#0A0B0E'
+      ctx.fillRect(0, 0, w, h)
+    }
 
     for (const [, sprite] of this.sprites) {
       if (!sprite.visible) continue
@@ -441,7 +513,7 @@ export class OpenFlashRuntime {
       ctx.translate(sprite.x, sprite.y)
       ctx.rotate(sprite.rotation * Math.PI / 180)
       ctx.scale(sprite.scaleX, sprite.scaleY)
-      ctx.fillStyle = sprite.data.color || '#FFFFFF'
+      ctx.fillStyle = String(sprite.data.color || '#FFFFFF')
       ctx.fillRect(-sprite.width / 2, -sprite.height / 2, sprite.width, sprite.height)
       ctx.restore()
     }
@@ -461,7 +533,10 @@ export class OpenFlashRuntime {
     this.scenes.clear()
     this.particles = []
     this.eventHandlers.clear()
+    this.pressedKeys.clear()
     this.physics.dispose()
+    this.disposedInputListeners.forEach(fn => { try { fn() } catch (e) { console.error('[OF] Input listener disposal error:', e) } })
+    this.disposedInputListeners = []
     if (this.audioContext) {
       this.audioContext.close()
       this.audioContext = null

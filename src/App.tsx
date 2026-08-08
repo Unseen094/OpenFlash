@@ -1,12 +1,22 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import DotGrid from './components/DotGrid'
 import Navbar from './components/Navbar'
 import KonamiOverlay from './components/KonamiOverlay'
+import AdConsent from './components/AdConsent'
 import LandingPage from './pages/LandingPage'
 import ArcadePage from './pages/ArcadePage'
 import DashboardPage from './pages/DashboardPage'
 import StudioPage from './pages/StudioPage'
+import DocsPage from './pages/DocsPage'
+import AuthPage, { RequireAuth } from './pages/AuthPage'
+import CheckoutPage from './pages/CheckoutPage'
+import PlayPage from './pages/PlayPage'
+import EarningsPage from './pages/EarningsPage'
+import PublishPage from './pages/PublishPage'
+import AdminPage from './pages/AdminPage'
+import NotFoundPage from './pages/NotFoundPage'
+import { AuthProvider } from './context/AuthContext'
 
 export default function App() {
   const location = useLocation()
@@ -44,26 +54,36 @@ export default function App() {
       gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4)
       osc.start(ctx.currentTime)
       osc.stop(ctx.currentTime + 0.4)
-    } catch (e) {}
-  }
-
-  const renderPage = () => {
-    switch (location.pathname) {
-      case '/arcade': return <ArcadePage />
-      case '/dashboard': return <DashboardPage />
-      case '/studio': return <StudioPage />
-      default: return <LandingPage />
+    } catch (e) {
+      console.error('Konami sound failed:', e)
     }
   }
 
   return (
-    <div style={{ minHeight: '100vh', position: 'relative' }}>
-      <DotGrid />
-      <Navbar konamiActive={konamiActive} />
-      <main style={{ position: 'relative', zIndex: 1 }}>
-        {renderPage()}
-      </main>
-      {konamiActive && <KonamiOverlay />}
-    </div>
+    <AuthProvider>
+      <div style={{ minHeight: '100vh', position: 'relative' }}>
+        <DotGrid />
+        <Navbar konamiActive={konamiActive} />
+        <main style={{ position: 'relative', zIndex: 1 }}>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/arcade" element={<ArcadePage />} />
+            <Route path="/play/:gameId" element={<PlayPage />} />
+            <Route path="/checkout" element={<CheckoutPage />} />
+            <Route path="/publish" element={<PublishPage />} />
+            <Route path="/earnings" element={<EarningsPage />} />
+            <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/studio" element={<RequireAuth><StudioPage /></RequireAuth>} />
+            <Route path="/docs" element={<DocsPage />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/signup" element={<AuthPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </main>
+        {konamiActive && <KonamiOverlay />}
+        <AdConsent />
+      </div>
+    </AuthProvider>
   )
 }

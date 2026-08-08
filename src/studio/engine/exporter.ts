@@ -64,9 +64,18 @@ canvas{display:block;max-width:100%;height:auto;border-radius:4px}
 <canvas id="of-canvas" width="${config.width}" height="${config.height}"></canvas>
 </div>
 <div id="controls">
-<button class="btn btn-primary" id="btn-play">▶ Play</button>
-<button class="btn" id="btn-pause">⏸ Pause</button>
-<button class="btn" id="btn-restart">↺ Restart</button>
+<button class="btn btn-primary" id="btn-play">
+  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style="vertical-align:middle;margin-right:4px"><path d="M8 5.14v13.72a1 1 0 001.5.86l11.04-6.86a1 1 0 000-1.72L9.5 4.28A1 1 0 008 5.14z"/></svg>
+  Play
+</button>
+<button class="btn" id="btn-pause">
+  <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14" style="vertical-align:middle;margin-right:4px"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+  Pause
+</button>
+<button class="btn" id="btn-restart">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" style="vertical-align:middle;margin-right:4px"><path d="M3 7v6h6"/><path d="M3 13a9 9 0 0115.36-6.36"/></svg>
+  Restart
+</button>
 </div>
 <div id="info">Powered by OPENFLASH Runtime v1.0</div>
 <script>
@@ -98,22 +107,22 @@ const generateShapesCode = (shapes: VectorShape[]): string => {
 
     switch (shape.type) {
       case 'rectangle':
-        renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.alpha};this.ctx.translate(${x},${y});this.ctx.rotate(${shape.transform.rotation}*Math.PI/180);this.ctx.fillStyle=${fill};this.ctx.fillRect(0,0,${w},${h});this.ctx.restore();`)
+        renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.rotate(${shape.transform.rotation}*Math.PI/180);this.ctx.fillStyle=${fill};this.ctx.fillRect(0,0,${w},${h});this.ctx.restore();`)
         break
       case 'ellipse':
         const rx = w / 2
         const ry = h / 2
-        renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.ellipse(${rx},${ry},${rx},${ry},0,0,6.28);this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
+        renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.ellipse(${rx},${ry},${rx},${ry},0,0,6.28);this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
         break
       case 'polygon':
         if (shape.points && shape.points.length >= 3) {
           const pts = shape.points.map(p => `${p.x},${p.y}`).join(',')
-          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.closePath();this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
+          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.closePath();this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
         }
         break
       case 'path':
         if (shape.points && shape.points.length >= 2) {
-          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.strokeStyle=${stroke};this.ctx.lineWidth=${shape.stroke?.width || 2};this.ctx.stroke();this.ctx.restore();`)
+          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.strokeStyle=${stroke};this.ctx.lineWidth=${shape.stroke?.width || 2};this.ctx.stroke();this.ctx.restore();`)
         }
         break
     }

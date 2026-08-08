@@ -1,403 +1,194 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
+import { listPublishedGames, recordPlay, recordDownload } from '../lib/monetization/games'
+import type { PublishedGame } from '../lib/monetization/types'
+import { recordRevenue } from '../lib/monetization/earnings'
+import { getPlan } from '../lib/monetization/plans'
+import AdSlot from '../components/AdSlot'
+import { getSlot, loadAdConfig } from '../lib/monetization/ads'
+import { IconGamepad, IconPlay, IconArrowDown, IconDownload } from '../components/Icons'
 
 export default function ArcadePage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [isPlaying, setIsPlaying] = useState(true)
-  const [fps, setFps] = useState(60)
-  const [scale, setScale] = useState(1)
-  const [crtEnabled, setCrtEnabled] = useState(false)
-  const [bloomEnabled, setBloomEnabled] = useState(false)
-  const [rating, setRating] = useState(0)
-  const [hoverRating, setHoverRating] = useState(0)
-  const [showExport, setShowExport] = useState(false)
-  const frameCount = useRef(0)
-  const lastTime = useRef(performance.now())
-  const animRef = useRef<number>(0)
+  const [games, setGames] = useState<PublishedGame[]>([])
+  const [headerSlot] = useState(() => getSlot(loadAdConfig(), 'header'))
+  const [footerSlot] = useState(() => getSlot(loadAdConfig(), 'footer'))
+  const [betweenSlot] = useState(() => getSlot(loadAdConfig(), 'between-content'))
 
-  const gameLoop = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
+  const refresh = () => setGames(listPublishedGames())
+  useEffect(() => { refresh() }, [])
 
-    const w = canvas.width
-    const h = canvas.height
+  const handlePlay = (game: PublishedGame) => {
+    recordPlay(game.id, 0.01)
+    // ad revenue: 40% to creator
+    const plan = getPlan(game.plan)
+    recordRevenue({
+      userId: game.creatorId,
+      gameId: game.id,
+      gameTitle: game.title,
+      type: 'ad',
+      grossUsd: 0.01,
+      creatorSharePct: plan.adRevenueShare
+    })
+    refresh()
+  }
 
-    ctx.fillStyle = 'rgba(10, 11, 14, 0.15)'
-    ctx.fillRect(0, 0, w, h)
-
-    const time = Date.now() / 1000
-
-    for (let i = 0; i < 3; i++) {
-      const x = w / 2 + Math.sin(time * (0.5 + i * 0.3)) * (80 + i * 40)
-      const y = h / 2 + Math.cos(time * (0.3 + i * 0.2)) * (60 + i * 30)
-      const size = 4 + Math.sin(time * 2 + i) * 2
-
-      ctx.beginPath()
-      ctx.arc(x, y, size, 0, Math.PI * 2)
-      ctx.fillStyle = i === 0 ? '#FFE600' : i === 1 ? '#00F0FF' : '#FF00AA'
-      ctx.shadowColor = ctx.fillStyle
-      ctx.shadowBlur = 16
-      ctx.fill()
-      ctx.shadowBlur = 0
+  const handleDownload = (game: PublishedGame) => {
+    if (game.priceUsd === 0) {
+      recordDownload(game.id, 0)
+      return
     }
-
-    frameCount.current++
-    const now = performance.now()
-    if (now - lastTime.current >= 1000) {
-      setFps(frameCount.current)
-      frameCount.current = 0
-      lastTime.current = now
-    }
-
-    animRef.current = requestAnimationFrame(gameLoop)
-  }, [])
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.width = 800
-    canvas.height = 450
-
-    if (isPlaying) {
-      animRef.current = requestAnimationFrame(gameLoop)
-    }
-    return () => cancelAnimationFrame(animRef.current)
-  }, [isPlaying, gameLoop])
-
-  const handleExport = () => {
-    const projectData = {
-      version: '1.0',
-      canvas: { width: 800, height: 450 },
-      scripts: ['OpenFlash.on("tick", () => { /* animation loop */ })'],
-      assets: [],
-      meta: { title: 'OpenFlash Export', created: new Date().toISOString() }
-    }
-
-    const runtime = `<script>(function(){const c=document.querySelector('canvas');const x=c.getContext('2d');let t=0;function loop(){t+=0.016;x.fillStyle='rgba(10,11,14,0.15)';x.fillRect(0,0,800,450);const e=Date.now()/1000;for(let i=0;i<3;i++){const a=400+Math.sin(e*(0.5+i*0.3))*(80+i*40),b=225+Math.cos(e*(0.3+i*0.2))*(60+i*30);x.beginPath();x.arc(a,b,4,0,6.28);x.fillStyle=['#FFE600','#00F0FF','#FF00AA'][i];x.fill();}requestAnimationFrame(loop);}loop();})()</script>`
-
-    const html = `<!DOCTYPE html><html><head><title>OpenFlash Project</title><style>body{margin:0;background:#0A0B0E;display:flex;align-items:center;justify-content:center;min-height:100vh}canvas{max-width:100%;height:auto}</style></head><body><canvas width="800" height="450"></canvas>${runtime}</body></html>`
-
-    const blob = new Blob([html], { type: 'text/html' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'openflash-project.html'
-    a.click()
-    URL.revokeObjectURL(url)
+    const plan = getPlan(game.plan)
+    recordRevenue({
+      userId: game.creatorId,
+      gameId: game.id,
+      gameTitle: game.title,
+      type: 'download',
+      grossUsd: game.priceUsd,
+      creatorSharePct: plan.downloadRevenueShare
+    })
+    recordDownload(game.id, game.priceUsd)
+    refresh()
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 24 }}>
-        <span className="badge badge-yellow" style={{ marginBottom: 8, display: 'inline-block' }}>NOW PLAYING</span>
-        <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 28, fontWeight: 700, marginBottom: 4 }}>
-          Untitled Project
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', minHeight: 'calc(100vh - 60px)' }}>
+      {/* Header ad */}
+      {headerSlot && <div style={{ marginBottom: 20 }}><AdSlot config={headerSlot} /></div>}
+
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 30, fontWeight: 700, marginBottom: 4 }}>
+          Arcade
         </h1>
-        <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
-          <span>by <strong>@anonymous</strong></span>
-          <span>•</span>
-          <span>0 plays</span>
-        </div>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+          Play games from creators. Free games install instantly — paid games use crypto checkout.
+        </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20 }}>
-        {/* Player */}
+      {/* Between-content ad */}
+      {betweenSlot && <div style={{ marginBottom: 20 }}><AdSlot config={betweenSlot} /></div>}
+
+      {games.length === 0 ? (
+        <div className="glass-panel" style={{ padding: 60, textAlign: 'center' }}>
+          <div style={{ marginBottom: 12 }}><IconGamepad size={40} /></div>
+          <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>No games yet</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
+            Be the first to publish a game and start earning!
+          </p>
+          <Link to="/studio" className="btn btn-primary" style={{ padding: '8px 20px', fontSize: 13, textDecoration: 'none' }}>
+            Create a Game
+          </Link>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 16 }}>
+          {games.map(game => (
+            <GameCard
+              key={game.id}
+              game={game}
+              onPlay={() => handlePlay(game)}
+              onDownload={() => handleDownload(game)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Footer ad */}
+      {footerSlot && <div style={{ marginTop: 28 }}><AdSlot config={footerSlot} /></div>}
+    </div>
+  )
+}
+
+function GameCard({ game, onPlay, onDownload }: {
+  game: PublishedGame
+  onPlay(): void
+  onDownload(): void
+}) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <div className="glass-panel" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* Thumbnail */}
+      <div style={{
+        height: 140,
+        background: game.thumbnail
+          ? `url(${game.thumbnail}) center/cover`
+          : 'linear-gradient(135deg, #1A1B22 0%, #2A2B38 100%)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative'
+      }}>
+        {!game.thumbnail && <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%' }}><IconGamepad size={36} style={{ opacity: 0.5 }} /></div>}
+        {game.adsEnabled && (
+          <span style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            fontSize: 9,
+            fontFamily: 'var(--font-mono)',
+            padding: '2px 6px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'rgba(0,0,0,0.6)',
+            color: 'var(--text-secondary)'
+          }}>
+            AD-SUPPORTED
+          </span>
+        )}
+      </div>
+
+      <div style={{ padding: 14, flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div>
-          <div className="glass-panel" style={{ padding: 16 }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: 12,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)'
-            }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF5F57' }} />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FFBD2E' }} />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#28CA41' }} />
-              <span style={{ marginLeft: 8, flex: 1 }}>player_stage</span>
-              <span style={{ color: fps > 55 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
-                {fps} FPS
-              </span>
-            </div>
-
-            <div style={{
-              position: 'relative',
-              borderRadius: 'var(--radius-md)',
-              overflow: 'hidden',
-              transform: `scale(${scale})`,
-              transformOrigin: 'top left'
-            }}>
-              <canvas
-                ref={canvasRef}
-                style={{
-                  width: '100%',
-                  height: 'auto',
-                  display: 'block',
-                  background: '#0A0B0E'
-                }}
-              />
-              {crtEnabled && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'repeating-linear-gradient(0deg, rgba(0,0,0,0.12) 0px, rgba(0,0,0,0.12) 1px, transparent 1px, transparent 2px)',
-                  pointerEvents: 'none'
-                }} />
-              )}
-              {bloomEnabled && (
-                <div style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'radial-gradient(ellipse at center, rgba(0,240,255,0.08) 0%, transparent 70%)',
-                  pointerEvents: 'none'
-                }} />
-              )}
-            </div>
-
-            {/* Controls */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              marginTop: 12,
-              padding: '8px 0'
-            }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  className={`btn ${isPlaying ? 'btn-primary' : ''}`}
-                  onClick={() => setIsPlaying(!isPlaying)}
-                >
-                  {isPlaying ? '⏸ Pause' : '▶ Play'}
-                </button>
-                <button className="btn btn-icon">⏮</button>
-                <button className="btn btn-icon">⏭</button>
-              </div>
-
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
-                  Scale:
-                </span>
-                {[1, 2].map(s => (
-                  <button
-                    key={s}
-                    className={`btn ${scale === s ? 'btn-cyan' : ''}`}
-                    style={{ padding: '4px 10px', fontSize: 11 }}
-                    onClick={() => setScale(s)}
-                  >
-                    {s}x
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Comments */}
-          <div className="glass-panel" style={{ padding: 20, marginTop: 16 }}>
-            <h3 style={{ fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600, marginBottom: 16 }}>
-              Frame Comments
-            </h3>
-            <div style={{
-              textAlign: 'center',
-              fontFamily: 'var(--font-mono)',
-              fontSize: 12,
-              color: 'var(--text-muted)',
-              padding: '24px 0'
-            }}>
-              No comments yet. Be the first to leave feedback!
-            </div>
-          </div>
+          <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>{game.title}</h3>
+          <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>by {game.creatorName}</p>
         </div>
 
-        {/* Sidebar */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* Display Controls */}
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h3 style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              marginBottom: 16
-            }}>
-              Display Controls
-            </h3>
+        {expanded && game.description && (
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>{game.description}</p>
+        )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <label style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer'
-              }}>
-                <span style={{ fontSize: 13 }}>CRT Scanlines</span>
-                <div
-                  onClick={() => setCrtEnabled(!crtEnabled)}
-                  style={{
-                    width: 36,
-                    height: 20,
-                    borderRadius: 10,
-                    background: crtEnabled ? 'var(--accent-cyan)' : 'var(--bg-tertiary)',
-                    position: 'relative',
-                    transition: 'background var(--transition-fast)',
-                    border: '1px solid var(--border-subtle)'
-                  }}
-                >
-                  <div style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    position: 'absolute',
-                    top: 1,
-                    left: crtEnabled ? 17 : 1,
-                    transition: 'left var(--transition-fast)'
-                  }} />
-                </div>
-              </label>
-
-              <label style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer'
-              }}>
-                <span style={{ fontSize: 13 }}>Bloom FX</span>
-                <div
-                  onClick={() => setBloomEnabled(!bloomEnabled)}
-                  style={{
-                    width: 36,
-                    height: 20,
-                    borderRadius: 10,
-                    background: bloomEnabled ? 'var(--accent-cyan)' : 'var(--bg-tertiary)',
-                    position: 'relative',
-                    transition: 'background var(--transition-fast)',
-                    border: '1px solid var(--border-subtle)'
-                  }}
-                >
-                  <div style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    position: 'absolute',
-                    top: 1,
-                    left: bloomEnabled ? 17 : 1,
-                    transition: 'left var(--transition-fast)'
-                  }} />
-                </div>
-              </label>
-
-              <label style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer'
-              }}>
-                <span style={{ fontSize: 13 }}>Vector Sharp</span>
-                <div style={{
-                  width: 36,
-                  height: 20,
-                  borderRadius: 10,
-                  background: 'var(--accent-cyan)',
-                  position: 'relative',
-                  border: '1px solid var(--border-subtle)'
-                }}>
-                  <div style={{
-                    width: 16,
-                    height: 16,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    position: 'absolute',
-                    top: 1,
-                    left: 17
-                  }} />
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Rating */}
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <h3 style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              marginBottom: 16
-            }}>
-              Rate This Project
-            </h3>
-
-            <div style={{ display: 'flex', gap: 4, justifyContent: 'center' }}>
-              {[1, 2, 3, 4, 5].map(star => (
-                <button
-                  key={star}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 24,
-                    cursor: 'pointer',
-                    color: star <= (hoverRating || rating) ? 'var(--accent-yellow)' : 'var(--bg-tertiary)',
-                    transition: 'color var(--transition-fast)',
-                    padding: 0
-                  }}
-                  onMouseEnter={() => setHoverRating(star)}
-                  onMouseLeave={() => setHoverRating(0)}
-                  onClick={() => setRating(star)}
-                >
-                  ★
-                </button>
-              ))}
-            </div>
-            <div style={{
-              textAlign: 'center',
-              marginTop: 8,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 12,
-              color: 'var(--text-muted)'
-            }}>
-              {rating > 0 ? `${rating}.0 / 5.0` : 'Click to rate'}
-            </div>
-          </div>
-
-          {/* Actions */}
-          <div className="glass-panel" style={{ padding: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleExport}>
-                📦 Export Offline HTML
-              </button>
-              <button className="btn" onClick={() => setShowExport(!showExport)}>
-                🔗 Generate Embed
-              </button>
-              <button className="btn">
-                💰 Tip Creator
-              </button>
-              <button className="btn btn-ghost">
-                ☆ Favorite
-              </button>
-            </div>
-
-            {showExport && (
-              <div style={{ marginTop: 12 }}>
-                <div className="input" style={{
-                  width: '100%',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 10,
-                  padding: 8,
-                  background: 'var(--bg-primary)',
-                  wordBreak: 'break-all'
-                }}>
-                  {`<iframe src="https://openflash.io/embed/neon-vector" width="800" height="450" frameborder="0"></iframe>`}
-                </div>
-              </div>
-            )}
-          </div>
+        <div style={{ display: 'flex', gap: 10, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><IconPlay size={10} /> {game.plays}</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><IconArrowDown size={10} /> {game.downloads}</span>
         </div>
+
+        <div style={{ flex: 1 }} />
+
+        <div style={{ display: 'flex', gap: 6 }}>
+          <a
+            href={`/play/${game.id}`}
+            onClick={() => onPlay()}
+            className="btn btn-ghost"
+            style={{ flex: 1, padding: '6px 10px', fontSize: 11, textAlign: 'center', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+          >
+            <IconPlay size={11} /> Play
+          </a>
+          {game.priceUsd === 0 ? (
+            <button
+              onClick={() => { onDownload(); window.open(`/play/${game.id}`, '_blank') }}
+              className="btn btn-primary"
+              style={{ flex: 1, padding: '6px 10px', fontSize: 11, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}
+            >
+              <IconDownload size={11} /> Install Free
+            </button>
+          ) : (
+            <Link
+              to={`/checkout?game=${game.id}&title=${encodeURIComponent(game.title)}&price=${game.priceUsd}`}
+              onClick={() => onDownload()}
+              className="btn btn-primary"
+              style={{ flex: 1, padding: '6px 10px', fontSize: 11, textAlign: 'center', textDecoration: 'none' }}
+            >
+              ${game.priceUsd.toFixed(2)} · Buy
+            </Link>
+          )}
+        </div>
+
+        {game.description && (
+          <button
+            onClick={() => setExpanded(e => !e)}
+            style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: 10, cursor: 'pointer', textAlign: 'left' }}
+          >
+            {expanded ? 'less' : 'more…'}
+          </button>
+        )}
       </div>
     </div>
   )

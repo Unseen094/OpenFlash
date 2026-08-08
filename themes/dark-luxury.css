@@ -1,0 +1,112 @@
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1a1a1a;
+  --bg-glass: rgba(10, 10, 10, 0.95);
+  --bg-glass-hover: rgba(26, 26, 26, 0.95);
+  --accent-yellow: #c9a96e;
+  --accent-cyan: #c9a96e;
+  --accent-magenta: #c9a96e;
+  --accent-green: #c9a96e;
+  --accent-orange: #c9a96e;
+  --text-primary: #f0ece4;
+  --text-secondary: #a89f91;
+  --text-muted: #6b6355;
+  --border-subtle: #2a2520;
+  --border-active: #c9a96e;
+  --grid-line: rgba(201, 169, 110, 0.02);
+  --shadow-soft: 0 4px 20px rgba(0, 0, 0, 0.5);
+  --shadow-glow-yellow: 0 0 20px rgba(201, 169, 110, 0.15);
+  --shadow-glow-cyan: 0 0 20px rgba(201, 169, 110, 0.15);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+  --font-sans: 'Cormorant Garamond', 'Playfair Display', 'Georgia', serif;
+  --transition-fast: 200ms ease;
+  --transition-base: 350ms ease;
+}
+
+body {
+  background: #0a0a0a;
+}
+
+.glass-panel {
+  background: rgba(17, 17, 17, 0.95);
+  border: 1px solid #2a2520;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(201, 169, 110, 0.05) inset;
+}
+
+.btn {
+  border: 1px solid #2a2520;
+  background: #111111;
+  color: #f0ece4;
+  font-family: 'Cormorant Garamond', 'Georgia', serif;
+  letter-spacing: 0.05em;
+  font-weight: 400;
+  border-radius: 6px;
+}
+
+.btn:hover {
+  border-color: #c9a96e;
+  color: #c9a96e;
+  box-shadow: 0 0 15px rgba(201, 169, 110, 0.1);
+}
+
+.btn-primary {
+  background: #c9a96e;
+  color: #0a0a0a;
+  border-color: #c9a96e;
+}
+
+.btn-primary:hover {
+  background: #d4b87a;
+  box-shadow: 0 0 20px rgba(201, 169, 110, 0.3);
+}
+
+.badge {
+  border: 1px solid #2a2520;
+  background: #1a1a1a;
+  color: #c9a96e;
+  border-radius: 4px;
+  font-family: 'Cormorant Garamond', serif;
+}
+
+input, textarea, select {
+  border: 1px solid #2a2520;
+  background: #0a0a0a;
+  color: #f0ece4;
+  border-radius: 6px;
+  font-family: 'Cormorant Garamond', serif;
+}
+
+input:focus {
+  border-color: #c9a96e;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(201, 169, 110, 0.3);
+}
+
+.dot-grid {
+  background: transparent;
+}
+
+nav {
+  background: rgba(10, 10, 10, 0.95) !important;
+  border-bottom: 1px solid #2a2520 !important;
+  backdrop-filter: blur(16px) !important;
+}
+
+h1, h2, h3 {
+  font-weight: 300;
+  letter-spacing: 0.02em;
+}
+
+.animate-slide-up {
+  animation: luxuryFade 0.35s ease;
+}
+
+@keyframes luxuryFade {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}

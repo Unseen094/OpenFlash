@@ -132,7 +132,7 @@ export const renderShape = (ctx: CanvasRenderingContext2D, shape: VectorShape, t
   if (!shape.visible) return
 
   ctx.save()
-  ctx.globalAlpha = shape.alpha
+  ctx.globalAlpha = shape.transform.alpha
   ctx.translate(shape.transform.x, shape.transform.y)
   ctx.rotate(shape.transform.rotation * Math.PI / 180)
   ctx.scale(shape.transform.scaleX, shape.transform.scaleY)

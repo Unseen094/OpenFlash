@@ -1,19 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { listProjects, deleteProject, ProjectMeta, createEmptyProject, saveProject } from '../lib/projects'
 
 export default function DashboardPage() {
+  const { user } = useAuth()
+  const owner = user?.email || user?.uid || 'anonymous'
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'assets'>('overview')
+  const [projects, setProjects] = useState<ProjectMeta[]>([])
+
+  const refreshProjects = () => {
+    setProjects(listProjects(owner))
+  }
+
+  useEffect(() => {
+    refreshProjects()
+  }, [owner])
+
+  const handleNewProject = () => {
+    const p = createEmptyProject(owner, `Project ${projects.length + 1}`)
+    saveProject(p)
+    refreshProjects()
+  }
 
   const stats = [
     { label: 'Total Plays', value: '0', change: '0%', color: 'var(--accent-yellow)' },
     { label: 'Favorites', value: '0', change: '0%', color: 'var(--accent-cyan)' },
-    { label: 'Offline Downloads', value: '0', change: '0%', color: 'var(--accent-green)' },
+    { label: 'Projects', value: `${projects.length}`, change: '+1', color: 'var(--accent-green)' },
     { label: 'Avg FPS', value: '—', change: '—', color: 'var(--accent-magenta)' }
   ]
 
-  const projects: Array<{ title: string; status: string; plays: string; fps: number; lastEdited: string }> = []
-
-  const revisions: Array<{ version: string; time: string; changes: string }> = []
+  const handleDelete = (id: string) => {
+    deleteProject(id)
+    refreshProjects()
+  }
 
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
@@ -24,10 +44,10 @@ export default function DashboardPage() {
             Creator Hub
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
-            Welcome back, <strong>@user</strong>
+            Welcome back, <strong>{user?.displayName || owner.split('@')[0]}</strong>
           </p>
         </div>
-        <Link to="/studio" className="btn btn-primary">
+        <Link to="/studio" className="btn btn-primary" onClick={handleNewProject}>
           + New Project
         </Link>
       </div>
@@ -221,44 +241,43 @@ export default function DashboardPage() {
               fontSize: 12,
               color: 'var(--text-muted)'
             }}>
-              No projects yet. Create your first project to get started!
+              No projects yet. Click "+ New Project" to create your first one!
             </div>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <th style={thStyle}>Project</th>
-                  <th style={thStyle}>Status</th>
-                  <th style={thStyle}>Plays</th>
-                  <th style={thStyle}>Avg FPS</th>
+                  <th style={thStyle}>Shapes</th>
+                  <th style={thStyle}>Code Lines</th>
                   <th style={thStyle}>Last Edited</th>
                   <th style={thStyle}></th>
                 </tr>
               </thead>
               <tbody>
-                {projects.map((proj, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)', transition: 'background var(--transition-fast)' }}
+                {projects.map(proj => (
+                  <tr key={proj.id} style={{ borderBottom: '1px solid var(--border-subtle)', transition: 'background var(--transition-fast)' }}
                     onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                   >
-                    <td style={{ ...tdStyle, fontWeight: 500 }}>{proj.title}</td>
-                    <td style={tdStyle}>
-                      <span className={`badge ${
-                        proj.status === 'Published' ? 'badge-green' :
-                        proj.status === 'Draft' ? 'badge-yellow' : 'badge'
-                      }`}>
-                        {proj.status}
-                      </span>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{proj.name}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{proj.shapeCount}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{proj.codeLines}</td>
+                    <td style={{ ...tdStyle, fontSize: 12, color: 'var(--text-muted)' }}>
+                      {new Date(proj.updatedAt).toLocaleString()}
                     </td>
-                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12 }}>{proj.plays}</td>
-                    <td style={{ ...tdStyle, fontFamily: 'var(--font-mono)', fontSize: 12, color: proj.fps >= 59 ? 'var(--accent-green)' : 'var(--accent-orange)' }}>
-                      {proj.fps}
-                    </td>
-                    <td style={{ ...tdStyle, fontSize: 12, color: 'var(--text-muted)' }}>{proj.lastEdited}</td>
                     <td style={tdStyle}>
-                      <Link to="/studio" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }}>
-                        Edit
-                      </Link>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        <Link to={`/studio?project=${proj.id}`} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }}>
+                          Edit
+                        </Link>
+                        <button onClick={() => handleDelete(proj.id)} className="btn btn-ghost"
+                          style={{ padding: '4px 10px', fontSize: 11, color: '#FF5F75' }}
+                          onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255, 95, 117, 0.08)')}
+                          onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

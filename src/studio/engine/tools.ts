@@ -1,7 +1,7 @@
-import { Vector2, Transform, generateId, distance } from './math'
+import { Vector2, Transform, generateId, distance, Color } from './math'
 import { VectorShape, FillStyle, StrokeStyle, createPath, createRectangle, createEllipse, createPolygon, createText } from './shapes'
 
-export type ToolType = 'select' | 'node' | 'pen' | 'brush' | 'line' | 'rectangle' | 'ellipse' | 'polygon' | 'text' | 'bucket' | 'eyedropper'
+export type ToolType = 'select' | 'node' | 'pen' | 'brush' | 'line' | 'rectangle' | 'ellipse' | 'polygon' | 'text' | 'bucket' | 'eyedropper' | 'eraser' | 'lasso' | 'star'
 
 export interface ToolState {
   activeTool: ToolType
@@ -13,6 +13,23 @@ export interface ToolState {
   polygonSides: number
   cornerRadius: number
   opacity: number
+  brushSize: number
+  brushOpacity: number
+  brushHardness: number
+  brushFlow: number
+  starPoints: number
+  starInnerRadius: number
+  snapToGrid: boolean
+  gridSize: number
+  showGrid: boolean
+  showRulers: boolean
+  showGuides: boolean
+  constrainProportions: boolean
+  smoothLine: boolean
+  canvasBackground: string
+  canvasWidth: number
+  canvasHeight: number
+  blendMode: string
 }
 
 export const defaultToolState: ToolState = {
@@ -24,7 +41,24 @@ export const defaultToolState: ToolState = {
   fontFamily: 'Space Grotesk, sans-serif',
   polygonSides: 6,
   cornerRadius: 0,
-  opacity: 1
+  opacity: 1,
+  brushSize: 12,
+  brushOpacity: 1,
+  brushHardness: 1,
+  brushFlow: 1,
+  starPoints: 5,
+  starInnerRadius: 0.5,
+  snapToGrid: false,
+  gridSize: 32,
+  showGrid: true,
+  showRulers: false,
+  showGuides: false,
+  constrainProportions: false,
+  smoothLine: true,
+  canvasBackground: '#0D0E12',
+  canvasWidth: 800,
+  canvasHeight: 450,
+  blendMode: 'normal'
 }
 
 export interface DrawingSession {
@@ -182,7 +216,7 @@ export class DrawingEngine {
     return this.session?.isDrawing || false
   }
 
-  hitTest(point: VectorShape): VectorShape | null {
+  hitTest(point: Vector2): VectorShape | null {
     for (let i = this.shapes.length - 1; i >= 0; i--) {
       const shape = this.shapes[i]
       if (shape.locked || !shape.visible) continue
@@ -278,7 +312,7 @@ export class DrawingEngine {
   }
 }
 
-const hexToFillColor = (hex: string): any => {
+const hexToFillColor = (hex: string): Color => {
   const r = parseInt(hex.slice(1, 3), 16)
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
