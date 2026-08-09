@@ -229,6 +229,10 @@ export class OpenFlashRuntime {
     return this.sprites.get(name)
   }
 
+  postScore(score: number): void {
+    this.dataChannel?.('score', { score })
+  }
+
   createSprite(options: OFSpriteOptions = {}): OFSprite {
     const sprite: OFSprite = {
       id: `sprite_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,

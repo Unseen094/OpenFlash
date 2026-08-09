@@ -1,18 +1,39 @@
+import { z } from 'zod'
+import { createRepository, Result } from '../storage/repository'
 import type { PublishedGame } from './types'
+import { getServerGames, recordServerDownload as apiRecordDownload, recordServerPlay as apiRecordPlay } from './api'
 
 const STORAGE_KEY = 'openflash_published_games'
 
+const PlanIdSchema = z.enum(['beta', 'sigma', 'alpha'])
+
+const PublishedGameSchema: z.ZodType<PublishedGame> = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  title: z.string().max(200),
+  description: z.string().max(5000),
+  creatorId: z.string(),
+  creatorName: z.string().max(100),
+  priceUsd: z.number().nonnegative(),
+  adsEnabled: z.boolean(),
+  plan: PlanIdSchema,
+  publishedAt: z.number(),
+  plays: z.number().nonnegative(),
+  downloads: z.number().nonnegative(),
+  revenueUsd: z.number().nonnegative(),
+  thumbnail: z.string()
+})
+
+const GamesArraySchema = z.array(PublishedGameSchema)
+
+const gamesRepo = createRepository<PublishedGame[]>(STORAGE_KEY, GamesArraySchema)
+
 function loadAll(): PublishedGame[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
+  return gamesRepo.readOrDefault([])
 }
 
-function saveAll(games: PublishedGame[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(games))
+function saveAll(games: PublishedGame[]): Result<void> {
+  return gamesRepo.write(games)
 }
 
 export function listPublishedGames(): PublishedGame[] {
@@ -75,7 +96,6 @@ export function deleteGame(id: string): void {
   saveAll(loadAll().filter(g => g.id !== id))
 }
 
-/** Increment play count + ad revenue. */
 export function recordPlay(id: string, adRevenueUsd: number): void {
   const g = getPublishedGame(id)
   if (!g) return
@@ -85,7 +105,6 @@ export function recordPlay(id: string, adRevenueUsd: number): void {
   })
 }
 
-/** Increment download count + download revenue. */
 export function recordDownload(id: string, downloadRevenueUsd: number): void {
   const g = getPublishedGame(id)
   if (!g) return
@@ -93,4 +112,98 @@ export function recordDownload(id: string, downloadRevenueUsd: number): void {
     downloads: g.downloads + 1,
     revenueUsd: Math.round((g.revenueUsd + downloadRevenueUsd) * 100) / 100
   })
+}
+
+// ─── Server-side games (Phase 8) ──────────────────────────────────────────────
+
+const USE_SERVER = !!import.meta.env.VITE_API_BASE_URL
+
+/**
+ * Refresh the local published-games list from the server API.
+ * Falls back to local storage if no API is configured.
+ */
+export async function syncServerGames(creatorId?: string): Promise<PublishedGame[]> {
+  if (!USE_SERVER) {
+    return creatorId ? listPublishedGamesByCreator(creatorId) : listPublishedGames()
+  }
+  try {
+    const items = await getServerGames(creatorId)
+    const games: PublishedGame[] = items.map(g => ({
+      id: g.id,
+      projectId: g.projectId,
+      title: g.title,
+      description: g.description,
+      creatorId: g.creatorId,
+      creatorName: g.creatorName,
+      priceUsd: g.priceUsd,
+      adsEnabled: g.adsEnabled,
+      plan: g.plan as PublishedGame['plan'],
+      publishedAt: g.publishedAt,
+      plays: g.plays,
+      downloads: g.downloads,
+      revenueUsd: g.revenueUsd,
+      thumbnail: g.thumbnail
+    }))
+    pushGames(games)
+    return games
+  } catch {
+    return creatorId ? listPublishedGamesByCreator(creatorId) : listPublishedGames()
+  }
+}
+
+function pushGames(games: PublishedGame[]): void {
+  const known = new Set(games.map(g => g.id))
+  const merged = [...games, ...loadAll().filter(g => !known.has(g.id))]
+  saveAll(merged)
+}
+
+/**
+ * Record a play via the server API (idempotent per session).
+ * Falls back to local recordPlay if no API is configured.
+ */
+export async function recordServerPlay(id: string, adRevenueUsd: number): Promise<void> {
+  if (!USE_SERVER) {
+    recordPlay(id, adRevenueUsd)
+    return
+  }
+  try {
+    await apiRecordPlay(id, 'system', sessionIdFor(id), adRevenueUsd)
+    const g = getPublishedGame(id)
+    if (g) updateGame(id, { plays: g.plays + 1 })
+  } catch {
+    recordPlay(id, adRevenueUsd)
+  }
+}
+
+/**
+ * Record a download via the server API (idempotent per session).
+ * Falls back to local recordDownload if no API is configured.
+ */
+export async function recordServerDownload(id: string, downloadRevenueUsd: number): Promise<void> {
+  if (!USE_SERVER) {
+    recordDownload(id, downloadRevenueUsd)
+    return
+  }
+  try {
+    await apiRecordDownload(id, 'system', sessionIdFor(id), downloadRevenueUsd)
+    const g = getPublishedGame(id)
+    if (g) updateGame(id, { downloads: g.downloads + 1 })
+  } catch {
+    recordDownload(id, downloadRevenueUsd)
+  }
+}
+
+const activeSessions = new Map<string, string>()
+
+function sessionIdFor(gameId: string): string {
+  let id = activeSessions.get(gameId)
+  if (!id) {
+    id = `${gameId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 10)}`
+    activeSessions.set(gameId, id)
+  }
+  return id
+}
+
+export function clearSession(gameId: string): void {
+  activeSessions.delete(gameId)
 }

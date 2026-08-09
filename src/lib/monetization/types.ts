@@ -139,7 +139,12 @@ export interface WithdrawalRequest {
   /** Creator's personal wallet address */
   walletAddress: string
   createdAt: number
+  /** When the request left `pending` (approved or rejected) */
   resolvedAt: number | null
+  /** When an admin approved the request */
+  approvedAt?: number | null
+  /** When the funds were actually sent */
+  paidAt?: number | null
   /** Platform tx hash after manual transfer */
   txHash: string | null
   notes: string

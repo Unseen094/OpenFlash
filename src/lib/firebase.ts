@@ -34,6 +34,13 @@ export const isFirebaseConfigured: boolean =
   Boolean(FIREBASE_CONFIG.authDomain) &&
   Boolean(FIREBASE_CONFIG.projectId)
 
+// In production, Firebase must be configured. A misconfigured deploy silently
+// ships an app where every protected route is public and any email logs you in
+// as a fabricated user. Fail loudly instead.
+if (import.meta.env.PROD && !isFirebaseConfigured) {
+  throw new Error('[firebase] Firebase is not configured for production. Set VITE_FIREBASE_* environment variables.')
+}
+
 let app: FirebaseApp | null = null
 let auth: Auth | null = null
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { listEarningsByUser, pendingBalanceForUser, listWithdrawalsByUser, createWithdrawal } from '../lib/monetization/earnings'
+import { listEarningsByUser, pendingBalanceForUser, listWithdrawalsByUser, createWithdrawal, withdrawnThisMonth, MIN_WITHDRAWAL } from '../lib/monetization/earnings'
 import { listPublishedGamesByCreator } from '../lib/monetization/games'
 import { COIN_LIST } from '../lib/monetization/coins'
 import type { CoinId } from '../lib/monetization/types'
@@ -25,6 +25,7 @@ export default function EarningsPage() {
 
   const balance = pendingBalanceForUser(userId)
   const plan = getPlan(planId)
+  const usedThisMonth = withdrawnThisMonth(userId)
 
   const refresh = () => {
     setEarnings(listEarningsByUser(userId))
@@ -38,30 +39,18 @@ export default function EarningsPage() {
   const totalDownload = earnings.filter(e => e.type === 'download').reduce((s, e) => s + e.creatorUsd, 0)
 
   const handleWithdraw = () => {
-    const amount = parseFloat(withdrawAmount)
-    if (!amount || amount <= 0) {
-      setMessage('Enter a valid amount.')
-      return
-    }
-    if (amount > balance) {
-      setMessage(`Insufficient balance. Available: $${balance.toFixed(2)}`)
-      return
-    }
-    if (amount > plan.maxWithdrawal) {
-      setMessage(`Your ${plan.name} plan allows max $${plan.maxWithdrawal}/month.`)
-      return
-    }
-    if (!walletAddress.trim()) {
-      setMessage('Enter your wallet address.')
-      return
-    }
-    createWithdrawal({
+    const result = createWithdrawal({
       userId,
       userName,
-      amountUsd: amount,
+      amountUsd: parseFloat(withdrawAmount),
       coin: withdrawCoin,
-      walletAddress: walletAddress.trim()
+      walletAddress,
+      plan
     })
+    if (!result.ok) {
+      setMessage(result.error.message)
+      return
+    }
     setWithdrawAmount('')
     setWalletAddress('')
     setMessage('Withdrawal request submitted! An admin will process it shortly.')
@@ -122,6 +111,7 @@ export default function EarningsPage() {
         <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 12 }}>Request Withdrawal</h3>
         <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12 }}>
           When you click withdraw, a request is sent to the admin. They will manually transfer the funds to your wallet.
+          Minimum ${MIN_WITHDRAWAL.toFixed(2)} · ${usedThisMonth.toFixed(2)} of ${plan.maxWithdrawal} used this month.
         </p>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>

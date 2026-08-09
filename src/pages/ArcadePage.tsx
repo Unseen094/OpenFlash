@@ -1,25 +1,24 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { listPublishedGames, recordPlay, recordDownload } from '../lib/monetization/games'
+import { listPublishedGames, recordDownload } from '../lib/monetization/games'
+import { getLeaderboard } from '../lib/monetization/leaderboard'
 import type { PublishedGame } from '../lib/monetization/types'
 import { recordRevenue } from '../lib/monetization/earnings'
 import { getPlan } from '../lib/monetization/plans'
 import AdSlot from '../components/AdSlot'
 import { getSlot, loadAdConfig } from '../lib/monetization/ads'
-import { IconGamepad, IconPlay, IconArrowDown, IconDownload } from '../components/Icons'
+import { IconGamepad, IconPlay, IconArrowDown, IconDownload, IconTrophy } from '../components/Icons'
 
 export default function ArcadePage() {
-  const [games, setGames] = useState<PublishedGame[]>([])
+  const [games, setGames] = useState<PublishedGame[]>(listPublishedGames)
   const [headerSlot] = useState(() => getSlot(loadAdConfig(), 'header'))
   const [footerSlot] = useState(() => getSlot(loadAdConfig(), 'footer'))
   const [betweenSlot] = useState(() => getSlot(loadAdConfig(), 'between-content'))
 
   const refresh = () => setGames(listPublishedGames())
-  useEffect(() => { refresh() }, [])
 
   const handlePlay = (game: PublishedGame) => {
-    recordPlay(game.id, 0.01)
-    // ad revenue: 40% to creator
+    // Ad revenue is attributed here (pre-play ad); PlayPage records the play itself.
     const plan = getPlan(game.plan)
     recordRevenue({
       userId: game.creatorId,
@@ -37,15 +36,8 @@ export default function ArcadePage() {
       recordDownload(game.id, 0)
       return
     }
-    const plan = getPlan(game.plan)
-    recordRevenue({
-      userId: game.creatorId,
-      gameId: game.id,
-      gameTitle: game.title,
-      type: 'download',
-      grossUsd: game.priceUsd,
-      creatorSharePct: plan.downloadRevenueShare
-    })
+    // Revenue is recorded only when payment is confirmed (order → paid),
+    // not at click time. See CheckoutPage → payment state machine.
     recordDownload(game.id, game.priceUsd)
     refresh()
   }
@@ -97,10 +89,20 @@ export default function ArcadePage() {
   )
 }
 
+function LeaderboardPreview({ gameId }: { gameId: string }) {
+  const board = getLeaderboard(gameId)
+  if (board.length === 0) return null
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--amber)' }}>
+      <IconTrophy size={10} /> {board[0].score.toLocaleString()} · {board.length}
+    </span>
+  )
+}
+
 function GameCard({ game, onPlay, onDownload }: {
   game: PublishedGame
-  onPlay(): void
-  onDownload(): void
+  onPlay: () => void
+  onDownload: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -148,6 +150,7 @@ function GameCard({ game, onPlay, onDownload }: {
         <div style={{ display: 'flex', gap: 10, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><IconPlay size={10} /> {game.plays}</span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}><IconArrowDown size={10} /> {game.downloads}</span>
+          <LeaderboardPreview gameId={game.id} />
         </div>
 
         <div style={{ flex: 1 }} />

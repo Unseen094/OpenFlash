@@ -11,18 +11,42 @@ export interface SandboxRunResult {
   message: string
 }
 
+/**
+ * Maximum wall-clock time a single synchronous execution unit — the top-level
+ * evaluation, or one animation-frame callback — may consume before the sandbox
+ * is force-stopped.
+ *
+ * JavaScript cannot be pre-empted mid-loop, so this is an interim mitigation
+ * only: a runaway script is terminated at the first point where control
+ * returns to us, not while it spins. The definitive fix is the iframe sandbox
+ * (Phase 8). The budget is per-unit rather than cumulative so that legitimate
+ * long-running animations are not killed after N seconds of normal drawing.
+ */
+const EXECUTION_TIMEOUT_MS = 5000
+
 export class StudioSandbox {
   private runtime: OpenFlashRuntime | null = null
   private canvas: HTMLCanvasElement | null = null
   private log: SandboxLog
+  private dataChannel?: (name: string, value: unknown) => void
+  private watchdog: ReturnType<typeof setTimeout> | null = null
+  private frameHandles = new Set<number>()
+  private totalExecutionMs = 0
+  private timedOut = false
 
-  constructor(canvas: HTMLCanvasElement | null, log: SandboxLog) {
+  constructor(canvas: HTMLCanvasElement | null, log: SandboxLog, dataChannel?: (name: string, value: unknown) => void) {
     this.canvas = canvas
     this.log = log
+    this.dataChannel = dataChannel
   }
 
   get isRunning(): boolean {
     return this.runtime !== null
+  }
+
+  /** Cumulative time spent executing user code since the last run started. */
+  get executionTimeMs(): number {
+    return this.totalExecutionMs
   }
 
   getRuntime(): OpenFlashRuntime | null {
@@ -52,11 +76,15 @@ export class StudioSandbox {
       }
     }
 
-    const runtime = new OpenFlashRuntime({ transparent: true, attachInputHandlers: false })
+    const runtime = new OpenFlashRuntime({ transparent: true, attachInputHandlers: false, dataChannel: this.dataChannel })
     runtime.initialize(this.canvas)
     this.runtime = runtime
 
     const consoleFacade = this.createConsoleFacade()
+
+    this.totalExecutionMs = 0
+    this.timedOut = false
+    this.startWatchdog()
 
     try {
       const compiled = new Function(
@@ -64,7 +92,21 @@ export class StudioSandbox {
         'console', 'Math', 'Date', 'JSON', 'performance', 'requestAnimationFrame',
         `"use strict";\n${stripTypeScript(code)}`
       )
-      compiled(runtime, runtime, consoleFacade, Math, Date, JSON, performance, (fn: FrameRequestCallback) => requestAnimationFrame(fn))
+
+      const started = performance.now()
+      compiled(
+        runtime, runtime, consoleFacade, Math, Date, JSON, performance,
+        this.createGuardedRaf()
+      )
+      const elapsed = performance.now() - started
+      this.totalExecutionMs += elapsed
+
+      if (this.timedOut || elapsed > EXECUTION_TIMEOUT_MS) {
+        this.abortForTimeout()
+        return { ok: false, message: `Execution exceeded ${EXECUTION_TIMEOUT_MS}ms and was stopped.` }
+      }
+
+      this.clearWatchdog()
       runtime.start()
       this.log('success', 'Script started — press Run again to stop.')
       return { ok: true, message: 'Running' }
@@ -76,7 +118,56 @@ export class StudioSandbox {
     }
   }
 
+  /**
+   * Wraps requestAnimationFrame so each user callback is time-tracked. If the
+   * cumulative budget is blown the sandbox is torn down and no further frames
+   * are scheduled.
+   */
+  private createGuardedRaf(): (fn: FrameRequestCallback) => number {
+    return (fn: FrameRequestCallback): number => {
+      if (this.timedOut || !this.runtime) return 0
+      const handle = requestAnimationFrame(ts => {
+        this.frameHandles.delete(handle)
+        if (this.timedOut || !this.runtime) return
+        const started = performance.now()
+        try {
+          fn(ts)
+        } finally {
+          const elapsed = performance.now() - started
+          this.totalExecutionMs += elapsed
+          if (elapsed > EXECUTION_TIMEOUT_MS) this.abortForTimeout()
+        }
+      })
+      this.frameHandles.add(handle)
+      return handle
+    }
+  }
+
+  private startWatchdog(): void {
+    this.clearWatchdog()
+    this.watchdog = setTimeout(() => {
+      if (this.runtime) this.abortForTimeout()
+    }, EXECUTION_TIMEOUT_MS)
+  }
+
+  private clearWatchdog(): void {
+    if (this.watchdog !== null) {
+      clearTimeout(this.watchdog)
+      this.watchdog = null
+    }
+  }
+
+  private abortForTimeout(): void {
+    if (this.timedOut) return
+    this.timedOut = true
+    this.log('error', `Execution timed out after ${EXECUTION_TIMEOUT_MS}ms — script stopped.`)
+    this.stop()
+  }
+
   stop(): void {
+    this.clearWatchdog()
+    for (const handle of this.frameHandles) cancelAnimationFrame(handle)
+    this.frameHandles.clear()
     if (this.runtime) {
       this.runtime.dispose()
       this.runtime = null

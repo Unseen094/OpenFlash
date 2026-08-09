@@ -6,17 +6,31 @@ import { IconCheck, IconRefresh, IconArrowRight } from '../components/Icons'
 import { COIN_LIST } from '../lib/monetization/coins'
 import type { CoinId, PaymentOrder } from '../lib/monetization/types'
 import { fetchRates, usdToCrypto } from '../lib/monetization/rates'
-import { createOrder, getPayment, updatePayment } from '../lib/monetization/payments'
+import { createOrder, getPayment, transition } from '../lib/monetization/payments'
 import { monitor } from '../lib/monetization/blockchain'
+import { getPublishedGame } from '../lib/monetization/games'
+import { getPlan } from '../lib/monetization/plans'
 
 export default function CheckoutPage() {
   const { user } = useAuth()
+  const userId = user ? (user.uid || user.email || 'anonymous') : ''
   const [searchParams] = useSearchParams()
   const gameId = searchParams.get('game') || ''
   const gameTitle = searchParams.get('title') || 'Game'
-  const priceUsd = parseFloat(searchParams.get('price') || '0')
   const planId = searchParams.get('plan') || ''
   const isPlanPurchase = !!planId
+
+  // Resolve price from authoritative source (game/plan data), never from URL.
+  // The URL price param is ignored to prevent price manipulation.
+  let priceUsd = 0
+  if (isPlanPurchase && planId) {
+    const plan = getPlan(planId as any)
+    priceUsd = plan.priceUsd
+  } else if (gameId) {
+    const game = getPublishedGame(gameId)
+    priceUsd = game?.priceUsd ?? 0
+  }
+
   const itemTitle = isPlanPurchase ? `Plan: ${planId.charAt(0).toUpperCase() + planId.slice(1)}` : gameTitle
 
   const [coin, setCoin] = useState<CoinId>('btc')
@@ -31,13 +45,15 @@ export default function CheckoutPage() {
     fetchRates().then(setRates)
   }, [])
 
-  // Create order when coin & rates are ready
+  // Create order when coin & rates are ready.
+  // Deliberately keyed on coin (not `order`) so switching coin tears the old
+  // watcher down before a new order is created.
   useEffect(() => {
-    if (!rates || !user || order) return
+    if (!rates || !userId) return
     const rate = rates[coin]
     if (!rate) return
     const o = createOrder({
-      userId: user.uid || user.email || 'anonymous',
+      userId,
       gameId,
       gameTitle,
       coin,
@@ -46,22 +62,32 @@ export default function CheckoutPage() {
     })
     setOrder(o)
     monitor.watch(o, updated => setOrder({ ...updated }))
-  }, [rates, coin, user, gameId, gameTitle, priceUsd, order])
+    return () => { monitor.unwatch(o.id) }
+  }, [rates, coin, userId, gameId, gameTitle, priceUsd])
 
-  // Countdown timer
+  const orderId = order?.id
+  const expiresAt = order?.expiresAt
+
+  // Countdown timer. Expiry is only applied if the order is still awaiting in
+  // storage — a payment confirmed on the last tick must win the race.
   useEffect(() => {
-    if (!order) return
+    if (!orderId || !expiresAt) return
     const tick = () => {
-      const left = Math.max(0, Math.round((order.expiresAt - Date.now()) / 1000))
+      const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000))
       setSecondsLeft(left)
-      if (left <= 0 && order.status === 'awaiting') {
-        updatePayment(order.id, { status: 'expired' })
+      if (left > 0) return
+      const fresh = getPayment(orderId)
+      if (!fresh || fresh.status !== 'awaiting') return
+      const result = transition(orderId, 'expired')
+      if (result.ok) {
+        monitor.unwatch(orderId)
+        setOrder({ ...result.value })
       }
     }
     tick()
     const interval = setInterval(tick, 1000)
     return () => clearInterval(interval)
-  }, [order])
+  }, [orderId, expiresAt])
 
   const refreshOrder = useCallback(() => {
     if (!order) return
@@ -102,8 +128,8 @@ export default function CheckoutPage() {
     return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>Please sign in to purchase.</p></CheckoutShell>
   }
 
-  if (priceUsd === 0) {
-    return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>This game is free. No payment required.</p></CheckoutShell>
+  if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
+    return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>This item is free or has no valid price. No payment required.</p></CheckoutShell>
   }
 
   return (
@@ -128,7 +154,7 @@ export default function CheckoutPage() {
             {COIN_LIST.map(c => (
               <button
                 key={c.id}
-                onClick={() => { setOrder(null); setCoin(c.id) }}
+                onClick={() => { if (c.id !== coin) { setOrder(null); setCoin(c.id) } }}
                 className={`btn ${coin === c.id ? 'btn-cyan' : 'btn-ghost'}`}
                 style={{ flex: 1, padding: '8px 12px', fontSize: 12, textTransform: 'capitalize' }}
               >

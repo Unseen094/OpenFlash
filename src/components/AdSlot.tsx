@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { AdSlotConfig } from '../lib/monetization/types'
-import { loadAdConfig } from '../lib/monetization/ads'
+import { loadAdConfig, subscribeAdConfig } from '../lib/monetization/ads'
 
 interface AdSlotProps {
   config: AdSlotConfig
@@ -13,7 +13,7 @@ interface AdSlotProps {
  *  - Fixed min-height wrapper prevents CLS (layout shift).
  *  - Lazy-loads via IntersectionObserver (only when scrolled into view).
  *  - Respects global ad toggle + per-slot toggle.
- *  - Supports AdSense (adsbygoogle) and custom HTML/JS injection.
+ *  - Supports AdSense (adsbygoogle) and custom HTML/JS in a sandboxed iframe.
  *  - Renders nothing when disabled (no empty box).
  */
 export default function AdSlot({ config }: AdSlotProps) {
@@ -23,10 +23,7 @@ export default function AdSlot({ config }: AdSlotProps) {
 
   const globalEnabled = adConfig.enabled && config.enabled
 
-  useEffect(() => {
-    const interval = setInterval(() => setAdConfig(loadAdConfig()), 5000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(() => subscribeAdConfig(setAdConfig), [])
 
   useEffect(() => {
     if (!ref.current || !globalEnabled) return
@@ -112,21 +109,27 @@ function AdSenseSlot({ pub, slot }: { pub: string; slot: string }) {
   )
 }
 
+/**
+ * Custom ad markup runs inside a sandboxed, origin-isolated iframe.
+ *
+ * `sandbox="allow-scripts"` (without `allow-same-origin`) forces the frame into
+ * an opaque origin, so injected code cannot reach this document, its cookies,
+ * localStorage, or the parent React tree. The inline CSP further blocks all
+ * network fetches except the inline script itself.
+ */
 function CustomAd({ code }: { code: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!ref.current) return
-    // Execute custom HTML/JS inside the slot
-    ref.current.innerHTML = code
-    const scripts = ref.current.querySelectorAll('script')
-    scripts.forEach(old => {
-      const s = document.createElement('script')
-      Array.from(old.attributes).forEach(a => s.setAttribute(a.name, a.value))
-      s.textContent = old.textContent
-      old.replaceWith(s)
-    })
-  }, [code])
-  return <div ref={ref} style={{ width: '100%', height: '100%' }} />
+  const srcDoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:"><style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden}</style></head><body>${code}</body></html>`
+
+  return (
+    <iframe
+      title="Advertisement"
+      sandbox="allow-scripts"
+      srcDoc={srcDoc}
+      referrerPolicy="no-referrer"
+      loading="lazy"
+      style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+    />
+  )
 }
 
 function AdPlaceholder({ placement }: { placement: string }) {

@@ -2,6 +2,9 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { listProjects, deleteProject, ProjectMeta, createEmptyProject, saveProject } from '../lib/projects'
+import { ensureWorkspaceSeed } from '../lib/demoSeed'
+import { listEarningsByUser, pendingBalanceForUser } from '../lib/monetization/earnings'
+import { listPublishedGamesByCreator } from '../lib/monetization/games'
 
 export default function DashboardPage() {
   const { user } = useAuth()
@@ -14,6 +17,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    ensureWorkspaceSeed(owner)
     refreshProjects()
   }, [owner])
 
@@ -23,11 +27,17 @@ export default function DashboardPage() {
     refreshProjects()
   }
 
+  const earnings = listEarningsByUser(owner)
+  const myGames = listPublishedGamesByCreator(owner)
+  const balance = pendingBalanceForUser(owner)
+  const tipsMonthly = earnings.filter(e => e.createdAt > Date.now() - 30 * 24 * 60 * 60 * 1000).reduce((s, e) => s + e.creatorUsd, 0)
+  const allTime = earnings.reduce((s, e) => s + e.creatorUsd, 0)
+
   const stats = [
-    { label: 'Total Plays', value: '0', change: '0%', color: 'var(--accent-yellow)' },
-    { label: 'Favorites', value: '0', change: '0%', color: 'var(--accent-cyan)' },
-    { label: 'Projects', value: `${projects.length}`, change: '+1', color: 'var(--accent-green)' },
-    { label: 'Avg FPS', value: '—', change: '—', color: 'var(--accent-magenta)' }
+    { label: 'Total Plays', value: String(myGames.reduce((s, g) => s + g.plays, 0)), change: 'live', color: 'var(--accent-yellow)' },
+    { label: 'Published', value: `${myGames.length}`, change: 'arcade', color: 'var(--accent-cyan)' },
+    { label: 'Projects', value: `${projects.length}`, change: 'local', color: 'var(--accent-green)' },
+    { label: 'Balance', value: `$${balance.toFixed(2)}`, change: 'USD', color: 'var(--accent-magenta)' }
   ]
 
   const handleDelete = (id: string) => {
@@ -38,53 +48,33 @@ export default function DashboardPage() {
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
+      <div className="row-between" style={{ marginBottom: 32, alignItems: 'flex-end' }}>
         <div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 28, fontWeight: 700, marginBottom: 4 }}>
+          <span className="sec-label"><b>HUB</b> WORKSPACE</span>
+          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 28, fontWeight: 700, marginBottom: 4, marginTop: 8 }}>
             Creator Hub
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
             Welcome back, <strong>{user?.displayName || owner.split('@')[0]}</strong>
           </p>
         </div>
-        <Link to="/studio" className="btn btn-primary" onClick={handleNewProject}>
+        <Link to="/studio" className="btn btn-amber" onClick={handleNewProject}>
           + New Project
         </Link>
       </div>
 
       {/* Stats Grid */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: 16,
-        marginBottom: 32
-      }}>
+      <div className="stat-grid" style={{ marginBottom: 32 }}>
         {stats.map((stat, i) => (
-          <div key={i} className="glass-panel" style={{ padding: 20 }}>
-            <div style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)',
-              textTransform: 'uppercase',
-              letterSpacing: 1,
-              marginBottom: 8
-            }}>
+          <div key={i} className="panel corner" style={{ padding: 18 }}>
+            <div className="tiny" style={{ opacity: 0.7, marginBottom: 8 }}>
               {stat.label}
             </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 28,
-                fontWeight: 700,
-                color: stat.color
-              }}>
+            <div className="row" style={{ alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontSize: 26, fontWeight: 700, color: stat.color, fontFamily: 'var(--font-mono)' }}>
                 {stat.value}
               </span>
-              <span style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11,
-                color: stat.change.startsWith('+') ? 'var(--accent-green)' : 'var(--accent-orange)'
-              }}>
+              <span className="badge" style={{ color: 'var(--green)', borderColor: 'rgba(22,240,140,0.3)' }}>
                 {stat.change}
               </span>
             </div>
@@ -193,19 +183,19 @@ export default function DashboardPage() {
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700, color: 'var(--accent-green)' }}>
-                  $0.00
+                  ${tipsMonthly.toFixed(2)}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Tips This Month</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Earned This Month</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700, color: 'var(--accent-cyan)' }}>
-                  0
+                  {earnings.length}
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Supporters</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Revenue Events</div>
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700, color: 'var(--accent-yellow)' }}>
-                  $0.00
+                  ${allTime.toFixed(2)}
                 </div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>All Time</div>
               </div>
@@ -220,12 +210,12 @@ export default function DashboardPage() {
               alignItems: 'center'
             }}>
               <div>
-                <div style={{ fontSize: 12, marginBottom: 2 }}>Your tip link:</div>
+                <div style={{ fontSize: 12, marginBottom: 2 }}>Withdrawable balance:</div>
                 <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-cyan)' }}>
-                  openflash.io/tip/user
+                  ${balance.toFixed(2)}
                 </div>
               </div>
-              <button className="btn">Copy Link</button>
+              <Link to="/earnings" className="btn btn-amber btn-sm">Withdraw</Link>
             </div>
           </div>
         </div>

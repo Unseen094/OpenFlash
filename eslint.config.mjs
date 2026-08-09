@@ -4,8 +4,11 @@ import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 
 export default [
+  {
+    ignores: ['dist/', 'coverage/', 'node_modules/', '*.config.mjs', '*.config.ts', '*.config.js']
+  },
   js.configs.recommended,
-  ...typescriptEslint.configs.recommended,
+  ...typescriptEslint.configs.recommendedTypeChecked,
   {
     plugins: {
       react,
@@ -19,8 +22,11 @@ export default [
       'react/no-unescaped-entities': 'off',
       'no-case-declarations': 'off',
       'no-useless-catch': 'off',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      '@typescript-eslint/no-explicit-any': 'error'
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error'
     },
     settings: {
       react: {
@@ -29,9 +35,36 @@ export default [
     },
     languageOptions: {
       parser: typescriptEslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname
+      }
     }
   },
   {
-    ignores: ['dist/', 'node_modules/', '*.config.mjs', '*.config.ts', '*.config.js']
+    files: ['**/*.{test,spec}.{ts,tsx}', 'src/test/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: {
+        describe: 'readonly',
+        it: 'readonly',
+        test: 'readonly',
+        expect: 'readonly',
+        vi: 'readonly',
+        beforeAll: 'readonly',
+        beforeEach: 'readonly',
+        afterAll: 'readonly',
+        afterEach: 'readonly',
+        suite: 'readonly',
+        assert: 'readonly'
+      }
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off'
+    }
   }
 ]

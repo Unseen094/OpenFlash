@@ -1,22 +1,55 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { Routes, Route, useLocation } from 'react-router-dom'
 import DotGrid from './components/DotGrid'
 import Navbar from './components/Navbar'
 import KonamiOverlay from './components/KonamiOverlay'
 import AdConsent from './components/AdConsent'
-import LandingPage from './pages/LandingPage'
-import ArcadePage from './pages/ArcadePage'
-import DashboardPage from './pages/DashboardPage'
-import StudioPage from './pages/StudioPage'
-import DocsPage from './pages/DocsPage'
-import AuthPage, { RequireAuth } from './pages/AuthPage'
-import CheckoutPage from './pages/CheckoutPage'
-import PlayPage from './pages/PlayPage'
-import EarningsPage from './pages/EarningsPage'
-import PublishPage from './pages/PublishPage'
-import AdminPage from './pages/AdminPage'
-import NotFoundPage from './pages/NotFoundPage'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { AuthProvider } from './context/AuthContext'
+import { ensureArcadeSeed } from './lib/demoSeed'
+
+import AuthPage, { RequireAuth } from './pages/AuthPage'
+
+const LandingPage = lazy(() => import('./pages/LandingPage'))
+const ArcadePage = lazy(() => import('./pages/ArcadePage'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const StudioPage = lazy(() => import('./pages/StudioPage'))
+const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
+const DocsPage = lazy(() => import('./pages/DocsPage'))
+const CheckoutPage = lazy(() => import('./pages/CheckoutPage'))
+const PlayPage = lazy(() => import('./pages/PlayPage'))
+const EarningsPage = lazy(() => import('./pages/EarningsPage'))
+const PublishPage = lazy(() => import('./pages/PublishPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'))
+
+const routeTitles: Record<string, string> = {
+  '/': 'OpenFlash — Interactive Creation Portal',
+  '/arcade': 'Arcade — OpenFlash',
+  '/play': 'Play — OpenFlash',
+  '/checkout': 'Checkout — OpenFlash',
+  '/publish': 'Publish — OpenFlash',
+  '/earnings': 'Earnings — OpenFlash',
+  '/admin': 'Admin — OpenFlash',
+  '/dashboard': 'Creator Hub — OpenFlash',
+  '/templates': 'Templates — OpenFlash',
+  '/studio': 'Studio — OpenFlash',
+  '/docs': 'Docs — OpenFlash',
+  '/login': 'Sign In — OpenFlash',
+  '/signup': 'Sign Up — OpenFlash',
+}
+
+function RouteTitle({ path }: { path: string }) {
+  useEffect(() => {
+    const base = '/' + (path.split('/')[1] || '')
+    document.title = routeTitles[base] || routeTitles['/']
+  }, [path])
+  return null
+}
+
+function RouteFallback() {
+  return <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>Loading…</div>
+}
 
 export default function App() {
   const location = useLocation()
@@ -33,6 +66,10 @@ export default function App() {
       setKonamiActive(prev => !prev)
       playKonamiSound()
     }
+  }, [])
+
+  useEffect(() => {
+    ensureArcadeSeed()
   }, [])
 
   useEffect(() => {
@@ -65,21 +102,25 @@ export default function App() {
         <DotGrid />
         <Navbar konamiActive={konamiActive} />
         <main style={{ position: 'relative', zIndex: 1 }}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/arcade" element={<ArcadePage />} />
-            <Route path="/play/:gameId" element={<PlayPage />} />
-            <Route path="/checkout" element={<CheckoutPage />} />
-            <Route path="/publish" element={<PublishPage />} />
-            <Route path="/earnings" element={<EarningsPage />} />
-            <Route path="/admin" element={<RequireAuth><AdminPage /></RequireAuth>} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/studio" element={<RequireAuth><StudioPage /></RequireAuth>} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/login" element={<AuthPage />} />
-            <Route path="/signup" element={<AuthPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
+          <RouteTitle path={location.pathname} />
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
+              <Route path="/" element={<ErrorBoundary><LandingPage /></ErrorBoundary>} />
+              <Route path="/arcade" element={<ErrorBoundary><ArcadePage /></ErrorBoundary>} />
+              <Route path="/play/:gameId" element={<ErrorBoundary><PlayPage /></ErrorBoundary>} />
+              <Route path="/checkout" element={<ErrorBoundary><CheckoutPage /></ErrorBoundary>} />
+              <Route path="/publish" element={<ErrorBoundary><RequireAuth><PublishPage /></RequireAuth></ErrorBoundary>} />
+              <Route path="/earnings" element={<ErrorBoundary><RequireAuth><EarningsPage /></RequireAuth></ErrorBoundary>} />
+              <Route path="/admin" element={<ErrorBoundary><RequireAuth><AdminPage /></RequireAuth></ErrorBoundary>} />
+              <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
+              <Route path="/templates" element={<ErrorBoundary><TemplatesPage /></ErrorBoundary>} />
+              <Route path="/studio" element={<ErrorBoundary><RequireAuth><StudioPage /></RequireAuth></ErrorBoundary>} />
+              <Route path="/docs" element={<ErrorBoundary><DocsPage /></ErrorBoundary>} />
+              <Route path="/login" element={<ErrorBoundary><AuthPage /></ErrorBoundary>} />
+              <Route path="/signup" element={<ErrorBoundary><AuthPage /></ErrorBoundary>} />
+              <Route path="*" element={<ErrorBoundary><NotFoundPage /></ErrorBoundary>} />
+            </Routes>
+          </Suspense>
         </main>
         {konamiActive && <KonamiOverlay />}
         <AdConsent />

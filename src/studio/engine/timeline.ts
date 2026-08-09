@@ -1,5 +1,5 @@
 import { VectorShape } from './shapes'
-import { Transform, generateId } from './math'
+import { Transform, generateId, deepClone } from './math'
 
 export type TweenType = 'motion' | 'shape' | 'none'
 
@@ -39,7 +39,7 @@ export const createLayer = (name: string, color = '#00F0FF'): Layer => ({
 
 export const createKeyframe = (frame: number, shape: VectorShape): Keyframe => ({
   frame,
-  shape: JSON.parse(JSON.stringify(shape)),
+  shape: deepClone(shape),
   tweenType: 'none',
   tweenEasing: 0
 })
@@ -128,7 +128,7 @@ export const duplicateLayer = (layer: Layer): Layer => ({
   name: `${layer.name} Copy`,
   keyframes: layer.keyframes.map(kf => ({
     ...kf,
-    shape: JSON.parse(JSON.stringify(kf.shape))
+    shape: deepClone(kf.shape)
   }))
 })
 

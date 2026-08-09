@@ -1,11 +1,34 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { listPublishedGames } from '../lib/monetization/games'
 import { IconZap, IconPackage, IconFilm, IconMusic, IconPalette, IconWrench, IconArrowRight } from '../components/Icons'
+
+const features = [
+  { icon: <IconZap size={20} />, title: 'TypeScript Runtime', desc: 'Sandboxed API replacing ActionScript with physics, collision, and scene management.', color: 'var(--accent-yellow)' },
+  { icon: <IconPackage size={20} />, title: 'Offline Export', desc: 'Compile projects into standalone .html files with zero external dependencies.', color: 'var(--accent-cyan)' },
+  { icon: <IconFilm size={20} />, title: 'Multi-Layer Timeline', desc: 'Frame-by-frame animation with motion tweens, onion skinning, and keyframe tools.', color: 'var(--accent-magenta)' },
+  { icon: <IconMusic size={20} />, title: 'Chiptune Synth', desc: 'Built-in retro sound generator and Web Audio matrix directly in the editor.', color: 'var(--accent-green)' },
+  { icon: <IconPalette size={20} />, title: 'Vector Canvas', desc: 'Pen, brush, shape tools with magnetic grid snapping and node adjustment.', color: 'var(--accent-orange)' },
+  { icon: <IconWrench size={20} />, title: 'Shader FX', desc: 'CRT scanlines, chromatic aberration, and bloom overlays for any project.', color: 'var(--accent-yellow)' },
+]
+
+const demoShape = (x: number, y: number, r: number, color: string, alpha: number) => ({
+  x, y, r, color, alpha,
+  vx: (Math.random() - 0.5) * 0.6,
+  vy: (Math.random() - 0.5) * 0.6,
+})
 
 export default function LandingPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isDrawing, setIsDrawing] = useState(false)
   const lastPos = useRef<{ x: number; y: number } | null>(null)
+  const { user } = useAuth()
+  const [now] = useState(() => Date.now())
+  const games = listPublishedGames().slice(0, 6)
+  const totalPlays = listPublishedGames().reduce((s, g) => s + g.plays, 0)
+  const creators = new Set(listPublishedGames().map(g => g.creatorId)).size
+  const projectCount = listPublishedGames().length
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -31,9 +54,6 @@ export default function LandingPage() {
 
     let rot = Math.PI / 2 * 3
     const step = Math.PI / spikes
-    const w = canvas.offsetWidth
-    const h = canvas.offsetHeight
-
     ctx.beginPath()
     ctx.moveTo(cx, cy - outerR)
     for (let i = 0; i < spikes; i++) {
@@ -56,31 +76,52 @@ export default function LandingPage() {
 
     const w = canvas.offsetWidth
     const h = canvas.offsetHeight
+    const stars = Array.from({ length: 14 }, () => demoShape(
+      Math.random() * w, Math.random() * h,
+      6 + Math.random() * 18,
+      ['var(--accent-yellow)', 'var(--accent-cyan)', 'var(--accent-magenta)', 'var(--accent-green)'][Math.floor(Math.random() * 4)],
+      0.5 + Math.random() * 0.5
+    ))
 
     const drawDemo = () => {
       ctx.clearRect(0, 0, w, h)
-
       const time = Date.now() / 1000
-      const cx = w / 2 + Math.sin(time * 0.5) * 40
-      const cy = h / 2 + Math.cos(time * 0.3) * 20
 
+      for (const s of stars) {
+        s.x += s.vx
+        s.y += s.vy
+        if (s.x < 0 || s.x > w) s.vx *= -1
+        if (s.y < 0 || s.y > h) s.vy *= -1
+        ctx.save()
+        ctx.globalAlpha = s.alpha * (0.6 + 0.4 * Math.sin(time * 2 + s.x))
+        ctx.shadowColor = s.color
+        ctx.shadowBlur = 18
+        ctx.beginPath()
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2)
+        ctx.fillStyle = s.color
+        ctx.fill()
+        ctx.restore()
+      }
+
+      const cx = w / 2 + Math.sin(time * 0.5) * 60
+      const cy = h / 2 + Math.cos(time * 0.3) * 24
       ctx.shadowColor = 'var(--accent-yellow)'
-      ctx.shadowBlur = 32
-      drawStar(cx, cy, 5, 60, 30)
-
+      ctx.shadowBlur = 28
+      drawStar(cx, cy, 5, 46, 23)
       ctx.shadowBlur = 0
-      ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)'
+      ctx.strokeStyle = 'rgba(0, 229, 255, 0.35)'
       ctx.lineWidth = 1
-      for (let i = 0; i < 5; i++) {
-        const r = 100 + i * 40 + Math.sin(time + i) * 10
+      for (let i = 0; i < 4; i++) {
+        const r = 80 + i * 34 + Math.sin(time + i) * 8
         ctx.beginPath()
         ctx.arc(cx, cy, r, 0, Math.PI * 2)
         ctx.stroke()
       }
     }
 
-    const interval = setInterval(drawDemo, 1000 / 60)
-    return () => clearInterval(interval)
+    const raf = () => { drawDemo(); requestAnimationFrame(raf) }
+    const id = requestAnimationFrame(raf)
+    return () => cancelAnimationFrame(id)
   }, [])
 
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -118,42 +159,23 @@ export default function LandingPage() {
     lastPos.current = { x, y }
   }
 
+  const stats = [
+    { value: creators || (user ? '1' : '0'), label: 'Creators' },
+    { value: String(projectCount || 0), label: 'Projects' },
+    { value: totalPlays ? totalPlays.toLocaleString() : '0', label: 'Plays' },
+    { value: '60fps', label: 'Playback' },
+  ]
+
   return (
-    <div style={{ padding: '0 24px' }}>
-      {/* Hero Section */}
-      <section style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 40,
-        alignItems: 'center',
-        minHeight: 'calc(100vh - 80px)',
-        padding: '40px 0'
-      }}>
-        <div className="animate-slide-up">
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '4px 12px',
-            background: 'rgba(255, 230, 0, 0.08)',
-            border: '1px solid rgba(255, 230, 0, 0.2)',
-            borderRadius: 'var(--radius-xl)',
-            marginBottom: 24
-          }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-green)', boxShadow: '0 0 8px var(--accent-green)' }} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent-green)' }}>
-              v1.0 NOW LIVE
-            </span>
+    <div className="container" style={{ paddingTop: 8 }}>
+      <section className="hero">
+        <div className="animate-slide-up" style={{ maxWidth: 620 }}>
+          <div className="hero-badge">
+            <span className="dot dot-live" />
+            <span className="tiny" style={{ color: 'var(--green)' }}>v1.0 NOW LIVE</span>
           </div>
 
-          <h1 style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 'clamp(40px, 6vw, 72px)',
-            fontWeight: 700,
-            lineHeight: 1.05,
-            letterSpacing: '-0.03em',
-            marginBottom: 20
-          }}>
+          <h1 className="display" style={{ margin: '20px 0' }}>
             <span style={{ color: 'var(--accent-yellow)' }}>ActionScript</span>
             <br />
             is dead. Long live
@@ -161,283 +183,142 @@ export default function LandingPage() {
             <span style={{ color: 'var(--accent-cyan)' }}>OpenFlash.</span>
           </h1>
 
-          <p style={{
-            fontSize: 16,
-            lineHeight: 1.6,
-            color: 'var(--text-secondary)',
-            maxWidth: 480,
-            marginBottom: 32
-          }}>
-            The modern WebGL vector creation portal. Build, play, and share
-            interactive experiences with TypeScript, HTML5 Canvas, and a
-            sandboxed runtime engine.
+          <p className="hero-sub">
+            The modern interactive creation portal. Build, play, and share
+            vector experiences with TypeScript, HTML5 Canvas, and a sandboxed
+            runtime — then ship them to the arcade and earn.
           </p>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <Link to="/studio" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: 14, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
+            <Link to="/studio" className="btn btn-amber btn-lg">
               Launch Studio <IconArrowRight size={14} />
             </Link>
-            <Link to="/arcade" className="btn" style={{ padding: '12px 24px', fontSize: 14 }}>
+            <Link to="/arcade" className="btn btn-lg">
               Browse Arcade
             </Link>
           </div>
 
-          <div style={{ display: 'flex', gap: 24, marginTop: 40 }}>
-            {[
-              { value: '0', label: 'Creators' },
-              { value: '0', label: 'Projects' },
-              { value: '60fps', label: 'Playback' }
-            ].map(stat => (
-              <div key={stat.label}>
-                <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 700, color: 'var(--accent-yellow)' }}>
-                  {stat.value}
-                </div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                  {stat.label}
-                </div>
+          <div className="hero-stats">
+            {stats.map(s => (
+              <div key={s.label}>
+                <div className="hero-stat-value">{s.value}</div>
+                <div className="hero-stat-label">{s.label}</div>
               </div>
             ))}
           </div>
         </div>
 
         <div className="animate-slide-up" style={{ animationDelay: '0.1s' }}>
-          <div className="glass-panel" style={{ padding: 16 }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              marginBottom: 12,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              color: 'var(--text-muted)'
-            }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FF5F57' }} />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#FFBD2E' }} />
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#28CA41' }} />
-              <span style={{ marginLeft: 8 }}>interactive_stage.canvas</span>
+          <div className="panel corner" style={{ padding: 14 }}>
+            <div className="window-bar">
+              <span className="dot" style={{ background: '#FF5F57' }} />
+              <span className="dot" style={{ background: '#FFBD2E' }} />
+              <span className="dot" style={{ background: '#28CA41' }} />
+              <span className="window-title">interactive_stage.canvas</span>
             </div>
             <canvas
               ref={canvasRef}
-              style={{
-                width: '100%',
-                height: 360,
-                borderRadius: 'var(--radius-md)',
-                cursor: 'crosshair',
-                display: 'block'
-              }}
+              className="stage-canvas"
               onMouseDown={handleMouseDown}
               onMouseUp={handleMouseUp}
               onMouseLeave={handleMouseUp}
               onMouseMove={handleMouseMove}
             />
-            <div style={{
-              marginTop: 8,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 10,
-              color: 'var(--text-muted)',
-              textAlign: 'center'
-            }}>
-              Click and draw on the canvas
-            </div>
+            <div className="window-hint">Click and draw on the canvas</div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section style={{ padding: '80px 0' }}>
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <span className="badge badge-cyan" style={{ marginBottom: 12 }}>CORE FEATURES</span>
-          <h2 style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 36,
-            fontWeight: 700,
-            letterSpacing: '-0.02em'
-          }}>
-            Built for the modern era
-          </h2>
+      <section style={{ padding: '72px 0' }}>
+        <div className="row-between" style={{ marginBottom: 36, alignItems: 'flex-end' }}>
+          <div>
+            <span className="sec-label"><b>01</b> CAPABILITIES</span>
+            <h2 className="h1" style={{ marginTop: 10 }}>Built for the modern era</h2>
+          </div>
+          <p className="muted small" style={{ maxWidth: 340, textAlign: 'right' }}>
+            Six systems, one engine. Everything a creator needs to go from blank frame to published game.
+          </p>
         </div>
 
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: 16
-        }}>
-          {[
-            {
-              icon: <IconZap size={20} />,
-              title: 'TypeScript Runtime',
-              desc: 'Sandboxed API replacing ActionScript with full physics, collision, and scene management.',
-              color: 'var(--accent-yellow)'
-            },
-            {
-              icon: <IconPackage size={20} />,
-              title: 'Offline Export',
-              desc: 'Compile projects into standalone .html files with zero external dependencies.',
-              color: 'var(--accent-cyan)'
-            },
-            {
-              icon: <IconFilm size={20} />,
-              title: 'Multi-Layer Timeline',
-              desc: 'Frame-by-frame animation with motion tweens, onion skinning, and keyframe tools.',
-              color: 'var(--accent-magenta)'
-            },
-            {
-              icon: <IconMusic size={20} />,
-              title: 'Chiptune Synth',
-              desc: 'Built-in retro sound generator and Web Audio matrix directly in the editor.',
-              color: 'var(--accent-green)'
-            },
-            {
-              icon: <IconPalette size={20} />,
-              title: 'Vector Canvas',
-              desc: 'Pen, brush, shape tools with magnetic grid snapping and node adjustment.',
-              color: 'var(--accent-orange)'
-            },
-            {
-              icon: <IconWrench size={20} />,
-              title: 'Shader FX',
-              desc: 'CRT scanlines, chromatic aberration, and bloom overlays for any project.',
-              color: 'var(--accent-yellow)'
-            }
-          ].map((feature, i) => (
-            <div
-              key={i}
-              className="glass-panel glass-panel-hover"
-              style={{
-                padding: 24,
-                transition: 'all var(--transition-base)',
-                cursor: 'default'
-              }}
-            >
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: 'var(--radius-md)',
-                background: `${feature.color}15`,
-                border: `1px solid ${feature.color}30`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 16
-              }}>
-                {feature.icon}
+        <div className="feature-grid">
+          {features.map((f, i) => (
+            <div key={i} className="panel panel-hover corner" style={{ padding: 22, cursor: 'default' }}>
+              <div className="feature-icon" style={{ color: f.color, borderColor: `color-mix(in srgb, ${f.color} 25%, transparent)`, background: `color-mix(in srgb, ${f.color} 8%, transparent)` }}>
+                {f.icon}
               </div>
-              <h3 style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize: 16,
-                fontWeight: 600,
-                marginBottom: 8
-              }}>
-                {feature.title}
-              </h3>
-              <p style={{
-                fontSize: 13,
-                lineHeight: 1.5,
-                color: 'var(--text-secondary)'
-              }}>
-                {feature.desc}
-              </p>
+              <div className="tiny" style={{ marginBottom: 6, opacity: 0.7 }}>0{i + 1}.{String.fromCharCode(97 + i)}</div>
+              <h3 className="h3" style={{ marginBottom: 6 }}>{f.title}</h3>
+              <p className="small muted" style={{ lineHeight: 1.55 }}>{f.desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Community Feed */}
-      <section style={{ padding: '80px 0' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
+      <section style={{ padding: '72px 0' }}>
+        <div className="row-between" style={{ marginBottom: 24 }}>
           <div>
-            <span className="badge badge-yellow" style={{ marginBottom: 12 }}>TRENDING</span>
-            <h2 style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: 36,
-              fontWeight: 700,
-              letterSpacing: '-0.02em'
-            }}>
-              Community Feed
-            </h2>
+            <span className="sec-label"><b>02</b> ARCADE</span>
+            <h2 className="h1" style={{ marginTop: 10 }}>Community Feed</h2>
           </div>
-          <Link to="/arcade" className="btn btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <Link to="/arcade" className="btn btn-ghost">
             View All <IconArrowRight size={13} />
           </Link>
         </div>
 
-        <div style={{
-          textAlign: 'center',
-          padding: '48px 0',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 12,
-          color: 'var(--text-muted)'
-        }}>
-          No projects published yet. Be the first to create something!
-        </div>
+        {games.length === 0 ? (
+          <div className="empty-state">
+            No projects published yet.
+            {user ? ' Be the first to create something!' : ' Sign in and build the first one.'}
+          </div>
+        ) : (
+          <div className="feature-grid">
+            {games.map(g => (
+              <div key={g.id} className="panel panel-hover corner" style={{ overflow: 'hidden' }}>
+                {g.thumbnail ? (
+                  <div className="game-thumb" style={{ backgroundImage: `url(${g.thumbnail})` }} />
+                ) : (
+                  <div className="game-thumb-placeholder" style={{ borderColor: (g.plan === 'alpha' ? 'var(--pink)' : g.plan === 'sigma' ? 'var(--cyan)' : 'var(--green)') }}>
+                    {g.title.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <div style={{ padding: 14 }}>
+                  <div className="row-between">
+                    <h3 className="h3" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{g.title}</h3>
+                    <span className="badge" style={g.priceUsd > 0 ? { color: 'var(--amber)', borderColor: 'rgba(255,212,0,0.35)' } : undefined}>
+                      {g.priceUsd > 0 ? `$${g.priceUsd}` : 'FREE'}
+                    </span>
+                  </div>
+                  <div className="tiny" style={{ marginTop: 6, opacity: 0.7 }}>
+                    {g.plan.toUpperCase()} · {g.plays} plays · {new Date(g.publishedAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
-      {/* Manifesto */}
-      <section style={{ padding: '80px 0', textAlign: 'center' }}>
-        <div className="glass-panel" style={{ padding: '60px 40px', maxWidth: 720, margin: '0 auto' }}>
-          <div style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 11,
-            color: 'var(--accent-cyan)',
-            textTransform: 'uppercase',
-            letterSpacing: 2,
-            marginBottom: 20
-          }}>
-            The Manifesto
-          </div>
-          <blockquote style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 'clamp(20px, 3vw, 28px)',
-            fontWeight: 600,
-            lineHeight: 1.4,
-            letterSpacing: '-0.02em',
-            marginBottom: 24
-          }}>
-            "We grew up drawing vectors in Flash, writing ActionScript, and
-            uploading to portals that no longer exist. OpenFlash is our love
-            letter to that era — rebuilt for the modern web with the tools
-            we always wished we had."
+      <section style={{ padding: '64px 0' }}>
+        <div className="panel corner manifesto" style={{ padding: '56px 40px' }}>
+          <span className="sec-label" style={{ justifyContent: 'center' }}><b>X</b> WHY</span>
+          <blockquote className="manifesto-quote">
+            "We grew up drawing vectors in Flash, writing ActionScript, and uploading to portals that no longer exist. OpenFlash is our love letter to that era — rebuilt for the modern web with the tools we always wished we had."
           </blockquote>
-          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            — The OpenFlash Team
-          </div>
+          <div className="tiny" style={{ color: 'var(--ink-2)' }}>— THE OPENFLASH TEAM</div>
         </div>
       </section>
 
-      {/* Footer */}
-      <footer style={{
-        padding: '40px 0',
-        borderTop: '1px solid var(--border-subtle)',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 16
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{
-            width: 24,
-            height: 24,
-            background: 'var(--accent-yellow)',
-            borderRadius: 'var(--radius-sm)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontFamily: 'var(--font-mono)',
-            fontWeight: 700,
-            fontSize: 10,
-            color: 'var(--bg-primary)'
-          }}>
-            OF
-          </div>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)' }}>
-            OPENFLASH © 2026
-          </span>
+      <footer className="site-footer">
+        <div className="row" style={{ gap: 8 }}>
+          <span className="nav-mark" style={{ width: 24, height: 24, fontSize: 10 }}>OF</span>
+          <span className="tiny" style={{ opacity: 0.7 }}>OPENFLASH © {new Date(now).getFullYear()}</span>
         </div>
-        <div style={{ display: 'flex', gap: 24, fontSize: 12, color: 'var(--text-muted)' }}>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>GitHub</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Discord</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Docs</a>
+        <div className="row" style={{ gap: 20 }}>
+          {['GitHub', 'Discord', 'Docs'].map(l => (
+            <a key={l} href="#" className="tiny" style={{ color: 'var(--ink-3)', transition: 'color 120ms' }} onMouseEnter={e => (e.currentTarget.style.color = 'var(--ink)')} onMouseLeave={e => (e.currentTarget.style.color = 'var(--ink-3)')}>
+              {l.toUpperCase()}
+            </a>
+          ))}
         </div>
       </footer>
     </div>

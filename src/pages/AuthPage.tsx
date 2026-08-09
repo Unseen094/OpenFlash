@@ -64,6 +64,21 @@ export default function AuthPage() {
     setError(null)
   }
 
+  const handleGuest = async () => {
+    setError(null)
+    setBusy(true)
+    try {
+      const guestEmail = `guest_${Math.random().toString(36).slice(2, 8)}@openflash.demo`
+      await signIn(guestEmail, 'x')
+      navigate(redirectTo, { replace: true })
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Guest sign-in failed.'
+      setError(message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div style={{
       minHeight: 'calc(100vh - 60px)',
@@ -72,31 +87,41 @@ export default function AuthPage() {
     }}>
       <div className="glass-panel animate-slide-up" style={{ width: 400, padding: 40, position: 'relative' }}>
         {!isConfigured && (
-          <div style={{
-            position: 'absolute', top: -12, left: 24, right: 24,
-            padding: '8px 12px', background: 'var(--bg-tertiary)',
-            border: '1px solid rgba(255, 102, 0, 0.35)',
-            borderRadius: 'var(--radius-sm)',
-            fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)',
-            display: 'flex', alignItems: 'center', gap: 6
+          <div className="panel corner" style={{
+            padding: '10px 14px',
+            marginBottom: 20,
+            display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(255, 138, 0, 0.05)',
+            borderColor: 'rgba(255, 138, 0, 0.3)'
           }}>
             <IconWarning size={14} />
-            Firebase not configured — demo mode active. Sign in with any email to start.
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)' }}>
+              DEMO MODE — no account needed
+            </span>
           </div>
         )}
 
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{
-            width: 48, height: 48, margin: '0 auto 12px', borderRadius: 'var(--radius-md)',
-            background: 'var(--accent-yellow)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 20, color: 'var(--bg-primary)'
-          }}>OF</div>
+        <div style={{ textAlign: 'center', marginBottom: 24 }}>
+          <div className="nav-mark" style={{ width: 48, height: 48, margin: '0 auto 12px', fontSize: 18 }}>OF</div>
           <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 700, letterSpacing: '-0.02em' }}>
             {mode === 'login' ? 'Welcome back' : 'Create your account'}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 6 }}>
             {mode === 'login' ? 'Sign in to continue to the Studio.' : 'Start building in seconds.'}
           </p>
+        </div>
+
+        {!isConfigured && (
+          <button className="btn btn-amber btn-block" onClick={handleGuest} disabled={busy}
+            style={{ padding: '12px 0', fontWeight: 700, marginBottom: 16 }}>
+            {busy ? 'Entering…' : 'Continue as Guest'}
+          </button>
+        )}
+
+        <div className="row" style={{ gap: 0, justifyContent: 'center' }}>
+          {!isConfigured && (
+            <span className="tiny" style={{ opacity: 0.6 }}>— or use an email —</span>
+          )}
         </div>
 
         <div style={{
@@ -145,19 +170,29 @@ export default function AuthPage() {
           </button>
         </form>
 
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0',
-          color: 'var(--text-muted)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase'
-        }}>
-          <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
-          or
-          <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
-        </div>
+        {!isConfigured && (
+          <div className="row" style={{ justifyContent: 'center', margin: '18px 0' }}>
+            <span className="tiny" style={{ opacity: 0.6 }}>demo storage — refresh clears nothing, data lives in your browser</span>
+          </div>
+        )}
 
-        <button className="btn" onClick={handleGoogle} disabled={busy}
-          style={{ width: '100%', justifyContent: 'center', padding: '11px 0' }}>
-          <span style={{ fontSize: 15 }}>G</span> Continue with Google
-        </button>
+        {isConfigured && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0',
+            color: 'var(--text-muted)', fontSize: 10, fontFamily: 'var(--font-mono)', textTransform: 'uppercase'
+          }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
+            or
+            <div style={{ flex: 1, height: 1, background: 'var(--border-subtle)' }} />
+          </div>
+        )}
+
+        {isConfigured && (
+          <button className="btn btn-block" onClick={handleGoogle} disabled={busy}
+            style={{ padding: '11px 0' }}>
+            <span style={{ fontSize: 15 }}>G</span> Continue with Google
+          </button>
+        )}
 
         <div style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>
           {mode === 'login' ? (

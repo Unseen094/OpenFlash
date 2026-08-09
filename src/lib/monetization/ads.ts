@@ -31,11 +31,51 @@ export function loadAdConfig(): AdConfig {
 
 export function saveAdConfig(config: AdConfig): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
+  notifyAdConfigChanged()
 }
 
 export function resetAdConfig(): AdConfig {
   localStorage.removeItem(STORAGE_KEY)
+  notifyAdConfigChanged()
   return structuredClone(DEFAULT_AD_CONFIG)
+}
+
+type AdConfigListener = (config: AdConfig) => void
+
+const listeners = new Set<AdConfigListener>()
+let storageBound = false
+
+function notifyAdConfigChanged(): void {
+  if (listeners.size === 0) return
+  const config = loadAdConfig()
+  for (const listener of listeners) listener(config)
+}
+
+function onStorage(e: StorageEvent): void {
+  if (e.key !== null && e.key !== STORAGE_KEY) return
+  notifyAdConfigChanged()
+}
+
+/**
+ * Subscribe to ad config changes.
+ *
+ * Replaces per-component polling: updates are pushed on `saveAdConfig` /
+ * `resetAdConfig` (same tab) and via the `storage` event (other tabs).
+ * A single window listener is shared by all subscribers.
+ */
+export function subscribeAdConfig(listener: AdConfigListener): () => void {
+  listeners.add(listener)
+  if (!storageBound && typeof window !== 'undefined') {
+    window.addEventListener('storage', onStorage)
+    storageBound = true
+  }
+  return () => {
+    listeners.delete(listener)
+    if (listeners.size === 0 && storageBound && typeof window !== 'undefined') {
+      window.removeEventListener('storage', onStorage)
+      storageBound = false
+    }
+  }
 }
 
 export function updateSlot(

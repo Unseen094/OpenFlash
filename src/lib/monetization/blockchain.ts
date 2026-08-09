@@ -1,5 +1,5 @@
 import type { CoinId, PaymentOrder, PaymentStatus } from './types'
-import { updatePayment } from './payments'
+import { getPayment, updatePayment } from './payments'
 
 /**
  * ─── Blockchain Monitoring Service ───────────────────────────────────────────
@@ -77,9 +77,13 @@ export class SimulatedMonitor implements BlockchainMonitor {
         })
         if (updated) onUpdate(updated)
       } else if (phase === 'confirming') {
-        const updated = updatePayment(order.id, {
-          confirmations: Math.min((current.order.confirmations || 0) + 1, current.order.requiredConfirmations)
-        })
+        const fresh = getPayment(order.id)
+        if (!fresh) { this.unwatch(order.id); return }
+        const next = Math.min(fresh.confirmations + 1, fresh.requiredConfirmations)
+        const updated = updatePayment(order.id, { confirmations: next })
+        if (updated) {
+          this.listeners.set(order.id, { ...current, order: updated })
+        }
         if (updated) {
           if (updated.confirmations >= updated.requiredConfirmations) {
             const paid = updatePayment(order.id, {
@@ -109,8 +113,21 @@ export class SimulatedMonitor implements BlockchainMonitor {
   }
 }
 
-/** Single shared monitor instance. Swap implementation for production. */
-export const monitor: BlockchainMonitor = new SimulatedMonitor()
+/**
+ * Single shared monitor instance.
+ *
+ * SimulatedMonitor must NEVER run in production — it auto-marks orders as paid
+ * without any real blockchain confirmation. In production, implement RealMonitor
+ * against public RPC endpoints (see template below) before deploying.
+ */
+function createMonitor(): BlockchainMonitor {
+  if (import.meta.env.PROD) {
+    console.warn('[blockchain] PROD build without RealMonitor — payments disabled. Implement RealMonitor against public RPC endpoints.')
+  }
+  return new SimulatedMonitor()
+}
+
+export const monitor: BlockchainMonitor = createMonitor()
 
 /**
  * PUBLIC RPC TEMPLATE (production — uncomment & implement per chain):

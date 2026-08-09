@@ -39,7 +39,7 @@ export default function AdminPage() {
 
   // In demo mode, allow access. In production, gate on admin role.
   if (!isAdmin) {
-    return <Shell><p style={{ color: '#FF5F75', padding: 40 }}>Access denied. Admins only. Log in with admin@123.com.</p></Shell>
+    return <Shell><p style={{ color: '#FF5F75', padding: 40 }}>Access denied. Admins only.</p></Shell>
   }
 
   const stats = paymentStats()
@@ -349,9 +349,38 @@ function WalletsTab() {
 // ─── Creators ────────────────────────────────────────────────────────────────
 
 function CreatorsTab({ withdrawals, onRefresh }: { withdrawals: WithdrawalRequest[]; onRefresh: () => void }) {
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [txHashes, setTxHashes] = useState<Record<string, string>>({})
+  const [error, setError] = useState('')
+
   const handleResolve = (id: string, status: 'approved' | 'rejected') => {
-    setWithdrawalStatus(id, status)
-    onRefresh()
+    if (busyId) return
+    setBusyId(id)
+    setError('')
+    try {
+      setWithdrawalStatus(id, status)
+      onRefresh()
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleMarkPaid = (id: string) => {
+    if (busyId) return
+    const txHash = (txHashes[id] || '').trim()
+    if (txHash.length < 16) {
+      setError('Enter the real transaction hash before marking a withdrawal as paid.')
+      return
+    }
+    setBusyId(id)
+    setError('')
+    try {
+      setWithdrawalStatus(id, 'paid', { txHash })
+      setTxHashes(prev => { const next = { ...prev }; delete next[id]; return next })
+      onRefresh()
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
@@ -385,18 +414,41 @@ function CreatorsTab({ withdrawals, onRefresh }: { withdrawals: WithdrawalReques
                 <td style={tdStyle}>
                   {w.status === 'pending' && (
                     <div style={{ display: 'flex', gap: 4 }}>
-                      <button onClick={() => handleResolve(w.id, 'approved')} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: 'var(--accent-green)' }}>
-                        Approve
+                      <button
+                        onClick={() => handleResolve(w.id, 'approved')}
+                        disabled={busyId !== null}
+                        className="btn btn-ghost"
+                        style={{ padding: '3px 8px', fontSize: 10, color: 'var(--accent-green)', opacity: busyId !== null ? 0.5 : 1 }}
+                      >
+                        {busyId === w.id ? 'Working…' : 'Approve'}
                       </button>
-                      <button onClick={() => handleResolve(w.id, 'rejected')} className="btn btn-ghost" style={{ padding: '3px 8px', fontSize: 10, color: '#FF5F75' }}>
+                      <button
+                        onClick={() => handleResolve(w.id, 'rejected')}
+                        disabled={busyId !== null}
+                        className="btn btn-ghost"
+                        style={{ padding: '3px 8px', fontSize: 10, color: '#FF5F75', opacity: busyId !== null ? 0.5 : 1 }}
+                      >
                         Reject
                       </button>
                     </div>
                   )}
                   {w.status === 'approved' && (
-                    <button onClick={() => { setWithdrawalStatus(w.id, 'paid', { txHash: 'manual_' + Date.now().toString(36) }); onRefresh() }} className="btn btn-primary" style={{ padding: '3px 8px', fontSize: 10 }}>
-                      Mark Paid
-                    </button>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <input
+                        value={txHashes[w.id] || ''}
+                        onChange={e => setTxHashes(prev => ({ ...prev, [w.id]: e.target.value }))}
+                        placeholder="Transaction hash"
+                        className="input" style={{ padding: '3px 8px', fontSize: 10, width: 160 }}
+                      />
+                      <button
+                        onClick={() => handleMarkPaid(w.id)}
+                        disabled={busyId !== null || (txHashes[w.id] || '').trim().length < 16}
+                        className="btn btn-primary"
+                        style={{ padding: '3px 8px', fontSize: 10, opacity: busyId !== null || (txHashes[w.id] || '').trim().length < 16 ? 0.5 : 1 }}
+                      >
+                        {busyId === w.id ? 'Working…' : 'Mark Paid'}
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -404,6 +456,7 @@ function CreatorsTab({ withdrawals, onRefresh }: { withdrawals: WithdrawalReques
           </tbody>
         </table>
       )}
+      {error && <p style={{ fontSize: 11, color: '#FF5F75', padding: '0 16px 12px' }}>{error}</p>}
     </div>
   )
 }
