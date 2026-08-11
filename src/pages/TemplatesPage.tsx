@@ -73,7 +73,7 @@ export default function TemplatesPage() {
   )
 }
 
-function TagChip({ active, onClick, children }: { active: boolean; onClick(): void; children: React.ReactNode }) {
+function TagChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
@@ -89,7 +89,7 @@ interface CardProps {
   template: TemplateDef
   gradient: string
   used: boolean
-  onUse(): void
+  onUse: () => void
 }
 
 function TemplateCard({ template, gradient, used, onUse }: CardProps) {

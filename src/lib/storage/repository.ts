@@ -10,8 +10,8 @@ export type Result<T> = { ok: true; value: T } | { ok: false; error: StorageErro
 
 export interface Repository<T> {
   read(): Result<T>
-  readOrDefault(defaultValue: T): T
-  write(value: T): Result<void>
+  readOrDefault(_defaultValue: T): T
+  write(_value: T): Result<void>
   clear(): void
 }
 
@@ -21,7 +21,7 @@ export function createRepository<T>(key: string, schema: z.ZodType<T>): Reposito
       try {
         const raw = localStorage.getItem(key)
         if (!raw) return { ok: false, error: { type: 'parse', message: 'No data' } }
-        const parsed = JSON.parse(raw)
+        const parsed = JSON.parse(raw) as unknown
         const result = schema.safeParse(parsed)
         if (!result.success) return { ok: false, error: { type: 'validation', message: 'Schema mismatch', issues: result.error.issues } }
         return { ok: true, value: result.data }
@@ -56,8 +56,8 @@ export function createRepository<T>(key: string, schema: z.ZodType<T>): Reposito
 
 export interface AsyncRepository<T> {
   read(): Promise<Result<T>>
-  readOrDefault(defaultValue: T): Promise<T>
-  write(value: T): Promise<Result<void>>
+  readOrDefault(_defaultValue: T): Promise<T>
+  write(_value: T): Promise<Result<void>>
   clear(): Promise<void>
 }
 

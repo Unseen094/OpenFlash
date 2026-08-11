@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { loadProject, type ProjectData } from '../lib/projects'
+import { type ProjectData } from '../lib/projects'
 import { publishGame } from '../lib/monetization/games'
 import { getPlan, PLAN_LIST } from '../lib/monetization/plans'
 import type { PlanId } from '../lib/monetization/types'
@@ -29,7 +29,7 @@ export default function PublishPage() {
     if (keys.length > 0) {
       const latestKey = keys.sort().reverse()[0]
       try {
-        const p: ProjectData = JSON.parse(localStorage.getItem(latestKey) || '')
+        const p: ProjectData = JSON.parse(localStorage.getItem(latestKey) || '') as unknown as ProjectData
         setProject(p)
         setTitle(p.name || 'Untitled Game')
       } catch { /* ignore */ }

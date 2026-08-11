@@ -1,11 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { listEarningsByUser, pendingBalanceForUser, listWithdrawalsByUser, createWithdrawal, withdrawnThisMonth, MIN_WITHDRAWAL } from '../lib/monetization/earnings'
-import { listPublishedGamesByCreator } from '../lib/monetization/games'
 import { COIN_LIST } from '../lib/monetization/coins'
 import type { CoinId } from '../lib/monetization/types'
 import { PLAN_LIST, getPlan } from '../lib/monetization/plans'
-import type { EarningRecord, WithdrawalRequest, PlanId, PublishedGame } from '../lib/monetization/types'
+import type { EarningRecord, WithdrawalRequest, PlanId } from '../lib/monetization/types'
 import { useNavigate } from 'react-router-dom'
 
 export default function EarningsPage() {
@@ -16,7 +15,6 @@ export default function EarningsPage() {
 
   const [earnings, setEarnings] = useState<EarningRecord[]>([])
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([])
-  const [games, setGames] = useState<PublishedGame[]>([])
   const [planId, setPlanId] = useState<PlanId>('beta')
   const [withdrawAmount, setWithdrawAmount] = useState('')
   const [withdrawCoin, setWithdrawCoin] = useState<CoinId>('sol')
@@ -27,13 +25,12 @@ export default function EarningsPage() {
   const plan = getPlan(planId)
   const usedThisMonth = withdrawnThisMonth(userId)
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     setEarnings(listEarningsByUser(userId))
     setWithdrawals(listWithdrawalsByUser(userId))
-    setGames(listPublishedGamesByCreator(userId))
-  }
+  }, [userId])
 
-  useEffect(() => { refresh() }, [userId])
+  useEffect(() => { refresh() }, [refresh])
 
   const totalAd = earnings.filter(e => e.type === 'ad').reduce((s, e) => s + e.creatorUsd, 0)
   const totalDownload = earnings.filter(e => e.type === 'download').reduce((s, e) => s + e.creatorUsd, 0)

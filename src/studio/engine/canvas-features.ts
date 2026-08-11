@@ -1,4 +1,4 @@
-import { Vector2, Transform, generateId } from './math'
+import { Vector2, generateId } from './math'
 import { VectorShape } from './shapes'
 
 export const CANVAS_PRESETS = [

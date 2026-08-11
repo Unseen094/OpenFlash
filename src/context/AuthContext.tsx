@@ -16,25 +16,14 @@ interface AuthContextValue {
   loading: boolean
   isConfigured: boolean
   isAdmin: boolean
-  signIn: (email: string, password: string) => Promise<User>
-  signUp: (email: string, password: string, displayName?: string) => Promise<User>
+  signIn: (_email: string, _password: string) => Promise<User>
+  signUp: (_email: string, _password: string, _displayName?: string) => Promise<User>
   signInWithGoogle: () => Promise<User>
+  signInAsGuest: () => User
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
-
-const ADMIN_EMAILS_KEY = 'openflash_admin_emails'
-
-function loadAdminEmails(): string[] {
-  if (!isFirebaseConfigured) return []
-  try {
-    const raw = localStorage.getItem(ADMIN_EMAILS_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch {
-    return []
-  }
-}
 
 interface DemoUser {
   email: string
@@ -42,19 +31,24 @@ interface DemoUser {
   uid: string
 }
 
-const DEMO_UID = 'demo-user'
+const DEMO_FLAG_KEY = 'openflash_demo_skip_firebase'
+
+function isDemoForced(): boolean {
+  try {
+    return localStorage.getItem(DEMO_FLAG_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 function loadDemoUser(): DemoUser | null {
   try {
     const raw = localStorage.getItem('openflash_demo_user')
-    return raw ? JSON.parse(raw) : null
+    return raw ? JSON.parse(raw) as DemoUser : null
   } catch {
     return null
   }
 }
-
-const DemoUserKey = (user: DemoUser) => localStorage.setItem('openflash_demo_user', JSON.stringify(user))
-const clearDemoUser = localStorage.removeItem.bind(localStorage, 'openflash_demo_user')
 
 function demoUid(email: string): string {
   let hash = 0
@@ -75,11 +69,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(isFirebaseConfigured)
   const [isAdmin, setIsAdmin] = useState(false)
   const [demoUser, setDemoUser] = useState<DemoUser | null>(() => loadDemoUser())
-  const [adminEmails, setAdminEmails] = useState<string[]>(() => loadAdminEmails())
 
   useEffect(() => {
     if (demoUser) {
-      setIsAdmin(false)
+      setIsAdmin(true)
     }
   }, [demoUser])
 
@@ -89,9 +82,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+    if (isDemoForced() || loadDemoUser()) {
+      setLoading(false)
+      return
+    }
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u)
-      // Admin is determined by Firebase custom claims, not localStorage
       if (u) {
         u.getIdTokenResult().then(token => {
           setIsAdmin(token.claims.admin === true)
@@ -105,6 +101,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = useCallback(async (email: string, password: string): Promise<User> => {
+    try { localStorage.removeItem(DEMO_FLAG_KEY) } catch { /* noop */ }
+    setDemoUser(null)
     const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase is not configured. Add your keys to src/lib/firebase.ts')
     const cred = await signInWithEmailAndPassword(auth, email, password)
@@ -116,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signUp = useCallback(async (email: string, password: string, displayName?: string): Promise<User> => {
+    try { localStorage.removeItem(DEMO_FLAG_KEY) } catch { /* noop */ }
+    setDemoUser(null)
     const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase is not configured. Add your keys to src/lib/firebase.ts')
     const cred = await createUserWithEmailAndPassword(auth, email, password)
@@ -132,6 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signInWithGoogle = useCallback(async (): Promise<User> => {
+    try { localStorage.removeItem(DEMO_FLAG_KEY) } catch { /* noop */ }
+    setDemoUser(null)
     const auth = getFirebaseAuth()
     if (!auth) throw new Error('Firebase is not configured. Add your keys to src/lib/firebase.ts')
     const cred = await signInWithPopup(auth, new GoogleAuthProvider())
@@ -142,60 +144,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return cred.user
   }, [])
 
+  const signInAsGuest = useCallback((): User => {
+    const demo = createDemoUser(`guest_${Math.random().toString(36).slice(2, 8)}@openflash.demo`)
+    try {
+      localStorage.setItem(DEMO_FLAG_KEY, '1')
+      localStorage.setItem('openflash_demo_user', JSON.stringify(demo))
+    } catch { /* noop */ }
+    setDemoUser(demo)
+    setIsAdmin(true)
+    setLoading(false)
+    return { uid: demo.uid, email: demo.email, displayName: demo.displayName } as User
+  }, [])
+
   const signOut = useCallback(async (): Promise<void> => {
     const auth = getFirebaseAuth()
-    if (auth) {
+    if (auth && !isDemoForced()) {
       await fbSignOut(auth)
     }
     setUser(null)
     setIsAdmin(false)
-    clearDemoUser()
+    try {
+      localStorage.removeItem('openflash_demo_user')
+    } catch { /* noop */ }
     setDemoUser(null)
   }, [])
 
+  const effectiveUser: User | null = demoUser
+    ? ({ uid: demoUser.uid, email: demoUser.email, displayName: demoUser.displayName } as User)
+    : user
+
   const value = useMemo((): AuthContextValue => ({
-    user,
-    loading,
+    user: effectiveUser,
+    loading: !demoUser && loading,
     isConfigured: isFirebaseConfigured,
     isAdmin,
     signIn,
     signUp,
     signInWithGoogle,
+    signInAsGuest,
     signOut
-  }), [user, loading, isAdmin, signIn, signUp, signInWithGoogle, signOut])
-
-  if (!isFirebaseConfigured) {
-    const demoValue = useMemo((): AuthContextValue => ({
-      user: (demoUser ? { uid: demoUser.uid, email: demoUser.email, displayName: demoUser.displayName } : null) as User | null,
-      loading: false,
-      isConfigured: false,
-      isAdmin: false,
-      signIn: async (email: string, _password: string) => {
-        const demo = createDemoUser(email)
-        DemoUserKey(demo)
-        setDemoUser(demo)
-        return { uid: demo.uid, email: demo.email, displayName: demo.displayName } as User
-      },
-      signUp: async (email: string, _password: string) => {
-        const demo = createDemoUser(email)
-        DemoUserKey(demo)
-        setDemoUser(demo)
-        return { uid: demo.uid, email: demo.email, displayName: demo.displayName } as User
-      },
-      signInWithGoogle: async () => {
-        const demo = createDemoUser('demo@openflash.io')
-        DemoUserKey(demo)
-        setDemoUser(demo)
-        return { uid: demo.uid, email: demo.email, displayName: demo.displayName } as User
-      },
-      signOut: async () => {
-        clearDemoUser()
-        setDemoUser(null)
-        setIsAdmin(false)
-      }
-    }), [demoUser])
-    return <AuthContext.Provider value={demoValue}>{children}</AuthContext.Provider>
-  }
+  }), [effectiveUser, demoUser, loading, isAdmin, signIn, signUp, signInWithGoogle, signInAsGuest, signOut])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

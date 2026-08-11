@@ -22,14 +22,14 @@ export class CommandStack {
 
   undo(): void {
     if (!this.canUndo()) return
-    this.stack[this.index]!.undo()
+    this.stack[this.index].undo()
     this.index--
   }
 
   redo(): void {
     if (!this.canRedo()) return
     this.index++
-    this.stack[this.index]!.do()
+    this.stack[this.index].do()
   }
 
   canUndo(): boolean {

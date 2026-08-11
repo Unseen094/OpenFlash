@@ -1,36 +1,32 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useRef, useMemo } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { listProjects, deleteProject, ProjectMeta, createEmptyProject, saveProject } from '../lib/projects'
-import { ensureWorkspaceSeed } from '../lib/demoSeed'
+import { listProjects, deleteProject, createEmptyProject, saveProject } from '../lib/projects'
+
 import { listEarningsByUser, pendingBalanceForUser } from '../lib/monetization/earnings'
 import { listPublishedGamesByCreator } from '../lib/monetization/games'
+
+const MONTH_AGO = Date.now() - 30 * 24 * 60 * 60 * 1000
 
 export default function DashboardPage() {
   const { user } = useAuth()
   const owner = user?.email || user?.uid || 'anonymous'
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'assets'>('overview')
-  const [projects, setProjects] = useState<ProjectMeta[]>([])
-
-  const refreshProjects = () => {
-    setProjects(listProjects(owner))
-  }
-
-  useEffect(() => {
-    ensureWorkspaceSeed(owner)
-    refreshProjects()
-  }, [owner])
+  const [, setRevision] = useState(0)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const projects = useMemo(() => listProjects(owner), [owner])
 
   const handleNewProject = () => {
     const p = createEmptyProject(owner, `Project ${projects.length + 1}`)
     saveProject(p)
-    refreshProjects()
+    navigate(`/studio?project=${p.id}`)
   }
 
   const earnings = listEarningsByUser(owner)
   const myGames = listPublishedGamesByCreator(owner)
   const balance = pendingBalanceForUser(owner)
-  const tipsMonthly = earnings.filter(e => e.createdAt > Date.now() - 30 * 24 * 60 * 60 * 1000).reduce((s, e) => s + e.creatorUsd, 0)
+  const tipsMonthly = earnings.filter(e => e.createdAt > MONTH_AGO).reduce((s, e) => s + e.creatorUsd, 0)
   const allTime = earnings.reduce((s, e) => s + e.creatorUsd, 0)
 
   const stats = [
@@ -42,7 +38,7 @@ export default function DashboardPage() {
 
   const handleDelete = (id: string) => {
     deleteProject(id)
-    refreshProjects()
+    setRevision(r => r + 1)
   }
 
   return (
@@ -58,9 +54,14 @@ export default function DashboardPage() {
             Welcome back, <strong>{user?.displayName || owner.split('@')[0]}</strong>
           </p>
         </div>
-        <Link to="/studio" className="btn btn-amber" onClick={handleNewProject}>
-          + New Project
-        </Link>
+        <div className="row" style={{ gap: 8 }}>
+          <Link to="/templates" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
+            Start from Template
+          </Link>
+          <button className="btn btn-amber" onClick={handleNewProject}>
+            + New Project
+          </button>
+        </div>
       </div>
 
       {/* Stats Grid */}
@@ -293,6 +294,14 @@ export default function DashboardPage() {
           }}>
             No assets uploaded yet. Start by uploading your first file!
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,image/svg+xml,audio/*"
+            multiple
+            style={{ display: 'none' }}
+            onChange={() => navigate('/studio')}
+          />
           <div className="glass-panel" style={{
             padding: 16,
             border: '2px dashed var(--border-subtle)',
@@ -302,10 +311,14 @@ export default function DashboardPage() {
             minHeight: 140,
             cursor: 'pointer',
             transition: 'all var(--transition-base)'
-          }}>
+          }} onClick={() => fileInputRef.current?.click()} onKeyDown={e => { if (e.key === 'Enter') fileInputRef.current?.click() }} role="button" tabIndex={0}
+            title="Import assets in the Studio">
             <div style={{ textAlign: 'center', color: 'var(--text-muted)' }}>
               <div style={{ fontSize: 24, marginBottom: 4 }}>+</div>
               <div style={{ fontSize: 11 }}>Upload Asset</div>
+              <div style={{ fontSize: 9, fontFamily: 'var(--font-mono)', marginTop: 6, opacity: 0.7 }}>
+                opens the studio asset library
+              </div>
             </div>
           </div>
         </div>

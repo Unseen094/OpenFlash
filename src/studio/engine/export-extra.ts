@@ -34,7 +34,7 @@ export const exportSpriteSheet = (config: SpriteSheetConfig): void => {
   link.click()
 }
 
-export const exportGif = async (frames: HTMLCanvasElement[], delay = 100, loop = true): Promise<void> => {
+export const exportGif = (frames: HTMLCanvasElement[], delay = 100, loop = true): void => {
   const width = frames[0]?.width || 800
   const height = frames[0]?.height || 450
   const canvas = document.createElement('canvas')

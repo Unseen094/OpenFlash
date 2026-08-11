@@ -13,7 +13,7 @@ export interface ToastItem {
 export const TOAST_MAX_VISIBLE = 5
 export const TOAST_DEDUPE_WINDOW_MS = 3000
 
-let toastListeners: ((toast: ToastItem) => void)[] = []
+let toastListeners: ((_toast: ToastItem) => void)[] = []
 let toastSeq = 0
 const recentToasts = new Map<string, number>()
 
@@ -44,10 +44,10 @@ export const dismissAllToasts = (): void => {
 }
 
 export interface UseToastApi {
-  toast: (message: string, type?: ToastType, duration?: number) => void
-  success: (message: string, duration?: number) => void
-  error: (message: string, duration?: number) => void
-  info: (message: string, duration?: number) => void
+  toast: (_message: string, _type?: ToastType, _duration?: number) => void
+  success: (_message: string, _duration?: number) => void
+  error: (_message: string, _duration?: number) => void
+  info: (_message: string, _duration?: number) => void
   dismissAll: () => void
 }
 

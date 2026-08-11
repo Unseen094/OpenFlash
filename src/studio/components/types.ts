@@ -66,6 +66,7 @@ export interface CanvasAreaProps {
   canvasHeight: number
   canvasBackground: string
   onContextMenu: (e: React.MouseEvent) => void
+  isEmpty?: boolean
 }
 
 export interface TimelineAreaProps {

@@ -1,32 +1,22 @@
 import { initializeApp, FirebaseApp } from 'firebase/app'
 import { getAuth, Auth, connectAuthEmulator } from 'firebase/auth'
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FIREBASE CONFIGURATION
-// ─────────────────────────────────────────────────────────────────────────────
-// Paste your Firebase web app config below. Get it from:
-// Firebase Console → Project Settings → Your apps → Web app → SDK setup.
-//
-// Recommended: use a .env file instead of editing this file directly.
-//   VITE_FIREBASE_API_KEY=...
-//   VITE_FIREBASE_AUTH_DOMAIN=...
-//   VITE_FIREBASE_PROJECT_ID=...
-//   VITE_FIREBASE_STORAGE_BUCKET=...
-//   VITE_FIREBASE_MESSAGING_SENDER_ID=...
-//   VITE_FIREBASE_APP_ID=...
-//
-// Until a real config is provided, `isFirebaseConfigured` is false and the app
-// runs in dev mode (auth routes work in demo mode, /studio and /dashboard are
-// not locked). Once you add your keys, login becomes mandatory for the studio.
-// ─────────────────────────────────────────────────────────────────────────────
+const DEFAULT_FIREBASE_CONFIG = {
+  apiKey: 'AIzaSyAmFOJvKECIJZTYtCOTl_acfl8FOn6mc2I',
+  authDomain: 'gen-lang-client-0652022231.firebaseapp.com',
+  projectId: 'gen-lang-client-0652022231',
+  storageBucket: 'gen-lang-client-0652022231.firebasestorage.app',
+  messagingSenderId: '818583549241',
+  appId: '1:818583549241:web:4681b79337432a10a5a4e8'
+}
 
 const FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || '',
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || '',
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || ''
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || DEFAULT_FIREBASE_CONFIG.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || DEFAULT_FIREBASE_CONFIG.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || DEFAULT_FIREBASE_CONFIG.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || DEFAULT_FIREBASE_CONFIG.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || DEFAULT_FIREBASE_CONFIG.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || DEFAULT_FIREBASE_CONFIG.appId
 }
 
 export const isFirebaseConfigured: boolean =
@@ -34,9 +24,6 @@ export const isFirebaseConfigured: boolean =
   Boolean(FIREBASE_CONFIG.authDomain) &&
   Boolean(FIREBASE_CONFIG.projectId)
 
-// In production, Firebase must be configured. A misconfigured deploy silently
-// ships an app where every protected route is public and any email logs you in
-// as a fabricated user. Fail loudly instead.
 if (import.meta.env.PROD && !isFirebaseConfigured) {
   throw new Error('[firebase] Firebase is not configured for production. Set VITE_FIREBASE_* environment variables.')
 }

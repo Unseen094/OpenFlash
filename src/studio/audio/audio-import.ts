@@ -27,7 +27,7 @@ export const importAudioFile = (file: File): Promise<AudioClip> => {
           trimEnd: buffer.duration,
           loop: false
         })
-      } catch (e) { reject(e) }
+      } catch (e) { reject(e instanceof Error ? e : new Error(String(e))) }
     }
     reader.onerror = reject
     reader.readAsArrayBuffer(file)

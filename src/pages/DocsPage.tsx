@@ -22,6 +22,7 @@ export default function DocsPage() {
     { name: 'OpenFlash.playSound(type)', sig: '(type: "hit" | "jump" | "shoot" | "explode" | "click"): void', desc: 'Play a retro synthesized sound effect. The AudioContext is created lazily on first call.' },
     { name: 'OpenFlash.createScene / loadScene / transition', sig: 'createScene(name, width?, height?) / loadScene(name) / transitionTo(name)', desc: 'Organize the game into scenes and switch between them. loadScene emits sceneUnload then sceneLoad.' },
     { name: 'OpenFlash.setKey / getKey / removeKey', sig: 'setKey(key, value) / getKey(key) / removeKey(key)', desc: 'Persistent local storage for high scores, settings, or save data. Survives reloads.' },
+    { name: 'OpenFlash.postScore(score)', sig: '(score: number): void', desc: 'Submit a score to the Arcade leaderboard for this game. Each call replaces the previous entry for this player if the new score is higher. Non-finite values are ignored. Use it liberally — the leaderboard tracks the best score per player.' },
     { name: 'console.log / warn / error', sig: 'console.log(...args)', desc: 'Print to the Studio output panel. Errors surface as [Error] lines in the console.' },
     { name: 'OpenFlash.mouseX / mouseY / frameRate / spriteCount', sig: 'get mouseX / mouseY / frameRate / spriteCount', desc: 'Live getters — cursor position, the current FPS, and how many sprites exist.' }
   ]
@@ -51,10 +52,13 @@ export default function DocsPage() {
     {
       name: 'Scenes and switching',
       code: [
-        "const menu = OpenFlash.createScene('menu')",
-        "const game = OpenFlash.createScene('game')",
-        'OpenFlash.loadScene("menu")',
-        "OpenFlash.on('pointerDown', () => OpenFlash.transition('game'))"
+        "const menu = OpenFlash.createSprite({ name: 'playBtn', x: 340, y: 200, width: 120, height: 40, color: '#FFD400' })",
+        "OpenFlash.on('pointerDown', (e) => {",
+        "  if (Math.abs(e.x - 400) < 60 && Math.abs(e.y - 220) < 20) {",
+        "    OpenFlash.playSound('click')",
+        "    OpenFlash.postScore(1)",
+        "  }",
+        '})'
       ].join('\n')
     }
   ]

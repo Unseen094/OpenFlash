@@ -1,4 +1,4 @@
-import type { CoinId, PaymentOrder, PaymentStatus } from './types'
+import type { PaymentOrder } from './types'
 import { getPayment, updatePayment } from './payments'
 
 /**
@@ -29,14 +29,14 @@ export interface TxInfo {
 
 export interface BlockchainMonitor {
   /** Begin watching an order. Invokes `onUpdate` on status changes. */
-  watch(order: PaymentOrder, onUpdate: (order: PaymentOrder) => void): void
+  watch(_order: PaymentOrder, _onUpdate: (order: PaymentOrder) => void): void
   /** Stop watching. */
-  unwatch(orderId: string): void
+  unwatch(_orderId: string): void
 }
 
 type Listener = {
   order: PaymentOrder
-  onUpdate: (o: PaymentOrder) => void
+  onUpdate: (updated: PaymentOrder) => void
   timer: ReturnType<typeof setInterval>
 }
 
@@ -50,7 +50,7 @@ type Listener = {
 export class SimulatedMonitor implements BlockchainMonitor {
   private listeners = new Map<string, Listener>()
 
-  watch(order: PaymentOrder, onUpdate: (o: PaymentOrder) => void): void {
+  watch(order: PaymentOrder, onUpdate: (updated: PaymentOrder) => void): void {
     if (this.listeners.has(order.id)) return
 
     let phase: 'awaiting' | 'detecting' | 'confirming' = 'awaiting'
@@ -65,14 +65,14 @@ export class SimulatedMonitor implements BlockchainMonitor {
           Math.floor(Math.random() * 16).toString(16)
         ).join('')
         const updated = updatePayment(order.id, {
-          status: 'detecting' as PaymentStatus,
+          status: 'detecting',
           txHash
         })
         if (updated) onUpdate(updated)
       } else if (phase === 'detecting') {
         phase = 'confirming'
         const updated = updatePayment(order.id, {
-          status: 'confirming' as PaymentStatus,
+          status: 'confirming',
           confirmations: 1
         })
         if (updated) onUpdate(updated)
@@ -87,7 +87,7 @@ export class SimulatedMonitor implements BlockchainMonitor {
         if (updated) {
           if (updated.confirmations >= updated.requiredConfirmations) {
             const paid = updatePayment(order.id, {
-              status: 'paid' as PaymentStatus,
+              status: 'paid',
               paidAt: Date.now()
             })
             if (paid) {
@@ -116,13 +116,23 @@ export class SimulatedMonitor implements BlockchainMonitor {
 /**
  * Single shared monitor instance.
  *
- * SimulatedMonitor must NEVER run in production — it auto-marks orders as paid
- * without any real blockchain confirmation. In production, implement RealMonitor
- * against public RPC endpoints (see template below) before deploying.
+ * The SimulatedMonitor never runs in production — payments would silently
+ * auto-confirm. In dev we expose it so the full UI flow can be exercised
+ * without real crypto. In production we install a no-op monitor that refuses
+ * every transition; deploy a RealMonitor (template below) before going live.
  */
+class NoopMonitor implements BlockchainMonitor {
+  watch(_order: PaymentOrder, _onUpdate: (updated: PaymentOrder) => void): void {
+    console.error('[blockchain] NoopMonitor.watch() called in production. Configure a RealMonitor before accepting payments.')
+  }
+  unwatch(_orderId: string): void {
+    // intentional no-op
+  }
+}
+
 function createMonitor(): BlockchainMonitor {
   if (import.meta.env.PROD) {
-    console.warn('[blockchain] PROD build without RealMonitor — payments disabled. Implement RealMonitor against public RPC endpoints.')
+    return new NoopMonitor()
   }
   return new SimulatedMonitor()
 }

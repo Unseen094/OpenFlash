@@ -3,7 +3,7 @@ import { IconMinus, IconFullscreen } from '../../components/Icons'
 import type { CanvasAreaProps } from './types'
 
 
-export const CanvasArea = memo(function CanvasArea({ canvasRef, overlayCanvasRef, zoom, onMouseDown, onMouseMove, onMouseUp, onMouseLeave, onZoomIn, onZoomOut, onZoomReset, onToggleFullscreen, canvasWidth, canvasHeight, canvasBackground, onContextMenu }: CanvasAreaProps) {
+export const CanvasArea = memo(function CanvasArea({ canvasRef, overlayCanvasRef, zoom, onMouseDown, onMouseMove, onMouseUp, onMouseLeave, onZoomIn, onZoomOut, onZoomReset, onToggleFullscreen, canvasWidth, canvasHeight, canvasBackground, onContextMenu, isEmpty }: CanvasAreaProps) {
   return (
     <div style={{
       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -21,6 +21,31 @@ export const CanvasArea = memo(function CanvasArea({ canvasRef, overlayCanvasRef
           onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseLeave}
           onContextMenu={onContextMenu}
         />
+        {isEmpty && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, width: canvasWidth, height: canvasHeight,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none'
+          }}>
+            <div style={{
+              textAlign: 'center', padding: '18px 22px', maxWidth: 320,
+              background: 'rgba(7, 7, 10, 0.82)', backdropFilter: 'blur(8px)',
+              border: '1px solid var(--line)', borderRadius: 'var(--radius-md)',
+              boxShadow: '0 8px 40px rgba(0, 0, 0, 0.5)'
+            }}>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: '0.14em', color: 'var(--amber)', marginBottom: 8 }}>
+                STAGE 00 · EMPTY
+              </div>
+              <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>Your stage is blank</div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                Pick a tool on the left and start drawing.
+                <br />Press <kbd>P</kbd> for shapes or <kbd>B</kbd> for brush.
+              </div>
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 10, fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>
+                <span>DRAW</span>·<span>ANIMATE</span>·<span>CODE</span>·<span>SHIP</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 50 }}>
         <button className="btn btn-ghost" onClick={onZoomIn} title="Zoom In" style={{ padding: '4px 8px', fontSize: 12 }}>+</button>

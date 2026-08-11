@@ -1,5 +1,4 @@
-import { Vector2 } from './math'
-import { PhysicsWorld, PhysicsBody } from './physics'
+import { PhysicsWorld } from './physics'
 
 export interface OFSprite {
   id: string
@@ -108,7 +107,7 @@ export class OpenFlashRuntime {
     try {
       const stored = localStorage.getItem('openflash_storage')
       if (stored) {
-        const data = JSON.parse(stored)
+        const data = JSON.parse(stored) as Record<string, unknown>
         Object.entries(data).forEach(([k, v]) => this.storage.set(k, v as string))
        }
      } catch (e) {

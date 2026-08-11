@@ -8,7 +8,7 @@ interface LocationState {
 }
 
 export default function AuthPage() {
-  const { user, loading, isConfigured, signIn, signUp, signInWithGoogle } = useAuth()
+  const { user, loading, isConfigured, signIn, signUp, signInWithGoogle, signInAsGuest } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
   const redirectTo = (location.state as LocationState | null)?.from || '/studio'
@@ -64,12 +64,11 @@ export default function AuthPage() {
     setError(null)
   }
 
-  const handleGuest = async () => {
+  const handleGuest = () => {
     setError(null)
     setBusy(true)
     try {
-      const guestEmail = `guest_${Math.random().toString(36).slice(2, 8)}@openflash.demo`
-      await signIn(guestEmail, 'x')
+      signInAsGuest()
       navigate(redirectTo, { replace: true })
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Guest sign-in failed.'
@@ -85,8 +84,7 @@ export default function AuthPage() {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       padding: 40
     }}>
-      <div className="glass-panel animate-slide-up" style={{ width: 400, padding: 40, position: 'relative' }}>
-        {!isConfigured && (
+<div className="glass-panel animate-slide-up" style={{ width: 400, padding: 40, position: 'relative' }}>
           <div className="panel corner" style={{
             padding: '10px 14px',
             marginBottom: 20,
@@ -96,10 +94,9 @@ export default function AuthPage() {
           }}>
             <IconWarning size={14} />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)' }}>
-              DEMO MODE — no account needed
+              DEMO MODE — instant access, one click
             </span>
           </div>
-        )}
 
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div className="nav-mark" style={{ width: 48, height: 48, margin: '0 auto 12px', fontSize: 18 }}>OF</div>
@@ -111,17 +108,13 @@ export default function AuthPage() {
           </p>
         </div>
 
-        {!isConfigured && (
-          <button className="btn btn-amber btn-block" onClick={handleGuest} disabled={busy}
-            style={{ padding: '12px 0', fontWeight: 700, marginBottom: 16 }}>
-            {busy ? 'Entering…' : 'Continue as Guest'}
-          </button>
-        )}
+        <button className="btn btn-amber btn-block" onClick={() => { void handleGuest() }} disabled={busy}
+          style={{ padding: '12px 0', fontWeight: 700, marginBottom: 16 }}>
+          {busy ? 'Entering…' : 'Continue as Guest'}
+        </button>
 
         <div className="row" style={{ gap: 0, justifyContent: 'center' }}>
-          {!isConfigured && (
-            <span className="tiny" style={{ opacity: 0.6 }}>— or use an email —</span>
-          )}
+          <span className="tiny" style={{ opacity: 0.6 }}>— or use an email —</span>
         </div>
 
         <div style={{
@@ -143,7 +136,7 @@ export default function AuthPage() {
           ))}
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <form onSubmit={(e) => { void handleSubmit(e) }} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {mode === 'signup' && (
             <input className="input" type="text" placeholder="Display name (optional)"
               value={displayName} onChange={e => setDisplayName(e.target.value)}
@@ -170,11 +163,9 @@ export default function AuthPage() {
           </button>
         </form>
 
-        {!isConfigured && (
-          <div className="row" style={{ justifyContent: 'center', margin: '18px 0' }}>
-            <span className="tiny" style={{ opacity: 0.6 }}>demo storage — refresh clears nothing, data lives in your browser</span>
-          </div>
-        )}
+        <div className="row" style={{ justifyContent: 'center', margin: '18px 0' }}>
+          <span className="tiny" style={{ opacity: 0.6 }}>guests get a sandboxed workspace — save your work with an account</span>
+        </div>
 
         {isConfigured && (
           <div style={{
@@ -188,7 +179,7 @@ export default function AuthPage() {
         )}
 
         {isConfigured && (
-          <button className="btn btn-block" onClick={handleGoogle} disabled={busy}
+          <button className="btn btn-block" onClick={() => { void handleGoogle() }} disabled={busy}
             style={{ padding: '11px 0' }}>
             <span style={{ fontSize: 15 }}>G</span> Continue with Google
           </button>
@@ -207,13 +198,9 @@ export default function AuthPage() {
 }
 
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { user, loading, isConfigured } = useAuth()
+  const { user, loading } = useAuth()
   const location = useLocation()
 
-  if (!isConfigured) {
-    // Dev mode — Firebase keys not added yet, keep everything accessible.
-    return children
-  }
   if (loading) {
     return (
       <div style={{
@@ -223,7 +210,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     )
   }
   if (!user) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />
   }
   return children
 }

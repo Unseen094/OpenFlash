@@ -5,11 +5,11 @@ import QrCode from '../components/QrCode'
 import { IconCheck, IconRefresh, IconArrowRight } from '../components/Icons'
 import { COIN_LIST } from '../lib/monetization/coins'
 import type { CoinId, PaymentOrder } from '../lib/monetization/types'
-import { fetchRates, usdToCrypto } from '../lib/monetization/rates'
+import { fetchRates } from '../lib/monetization/rates'
 import { createOrder, getPayment, transition } from '../lib/monetization/payments'
 import { monitor } from '../lib/monetization/blockchain'
 import { getPublishedGame } from '../lib/monetization/games'
-import { getPlan } from '../lib/monetization/plans'
+import { getPlan, isPlanId, activateFreePlan } from '../lib/monetization/plans'
 
 export default function CheckoutPage() {
   const { user } = useAuth()
@@ -24,12 +24,13 @@ export default function CheckoutPage() {
   // The URL price param is ignored to prevent price manipulation.
   let priceUsd = 0
   if (isPlanPurchase && planId) {
-    const plan = getPlan(planId as any)
-    priceUsd = plan.priceUsd
+    const plan = isPlanId(planId) ? getPlan(planId) : null
+    priceUsd = plan?.priceUsd ?? 0
   } else if (gameId) {
     const game = getPublishedGame(gameId)
     priceUsd = game?.priceUsd ?? 0
   }
+  const validPlan = isPlanPurchase && isPlanId(planId) ? planId : null
 
   const itemTitle = isPlanPurchase ? `Plan: ${planId.charAt(0).toUpperCase() + planId.slice(1)}` : gameTitle
 
@@ -38,23 +39,30 @@ export default function CheckoutPage() {
   const [order, setOrder] = useState<PaymentOrder | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [copied, setCopied] = useState(false)
-  const [error, setError] = useState('')
 
   // Load exchange rates once
   useEffect(() => {
-    fetchRates().then(setRates)
+    fetchRates().then(setRates).catch(() => setRates(null))
   }, [])
+
+  // Free plans (e.g. Beta) don't need crypto — activate them instantly.
+  const activatePlanNow = () => {
+    if (!validPlan || !userId) return
+    const activated = activateFreePlan(userId, validPlan)
+    if (activated) setOrder(activated)
+  }
 
   // Create order when coin & rates are ready.
   // Deliberately keyed on coin (not `order`) so switching coin tears the old
-  // watcher down before a new order is created.
+  // watcher down before a new order is created. Plan purchases are recorded
+  // with a `plan:<id>` gameId so entitlement survives reloads.
   useEffect(() => {
-    if (!rates || !userId) return
+    if (!rates || !userId || priceUsd <= 0) return
     const rate = rates[coin]
     if (!rate) return
     const o = createOrder({
       userId,
-      gameId,
+      gameId: isPlanPurchase ? `plan:${planId}` : gameId,
       gameTitle,
       coin,
       amountUsd: priceUsd,
@@ -63,7 +71,7 @@ export default function CheckoutPage() {
     setOrder(o)
     monitor.watch(o, updated => setOrder({ ...updated }))
     return () => { monitor.unwatch(o.id) }
-  }, [rates, coin, userId, gameId, gameTitle, priceUsd])
+  }, [rates, coin, userId, gameId, gameTitle, planId, priceUsd, isPlanPurchase])
 
   const orderId = order?.id
   const expiresAt = order?.expiresAt
@@ -107,7 +115,6 @@ export default function CheckoutPage() {
   }
 
   const rate = rates?.[coin]
-  const cryptoAmount = rate ? usdToCrypto(priceUsd, rate) : 0
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60)
@@ -128,8 +135,38 @@ export default function CheckoutPage() {
     return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>Please sign in to purchase.</p></CheckoutShell>
   }
 
-  if (!Number.isFinite(priceUsd) || priceUsd <= 0) {
-    return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>This item is free or has no valid price. No payment required.</p></CheckoutShell>
+  if (!Number.isFinite(priceUsd) || priceUsd < 0) {
+    return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>This item has no valid price.</p></CheckoutShell>
+  }
+
+  // Free plans (e.g. Beta) are activated with one click instead of a crypto flow.
+  if (priceUsd === 0 && validPlan) {
+    return (
+      <CheckoutShell>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 420 }}>
+          <div>
+            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 700, marginBottom: 4 }}>
+              Activate {itemTitle}
+            </h1>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              This plan is free. Activate it to enable its features immediately.
+            </p>
+          </div>
+          {order?.status === 'paid' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <p style={{ fontSize: 13, color: 'var(--accent-green)', fontWeight: 600 }}>Plan Activated ✓</p>
+              <a href="/earnings" className="btn btn-primary" style={{ padding: '10px 16px', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
+                View Earnings <IconArrowRight size={14} />
+              </a>
+            </div>
+          ) : (
+            <button onClick={activatePlanNow} className="btn btn-primary" style={{ padding: '10px 16px', fontSize: 13 }}>
+              Activate free plan
+            </button>
+          )}
+        </div>
+      </CheckoutShell>
+    )
   }
 
   return (
@@ -240,7 +277,7 @@ export default function CheckoutPage() {
                     }}>
                       {order.address}
                     </code>
-                    <button onClick={copyAddress} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10 }}>
+                    <button onClick={() => void copyAddress()} className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 10 }}>
                       {copied ? <><IconCheck size={12} /> Copied</> : 'Copy'}
                     </button>
                   </div>
@@ -286,8 +323,6 @@ export default function CheckoutPage() {
                 </div>
               )}
             </div>
-
-            {error && <p style={{ fontSize: 12, color: '#FF5F75' }}>{error}</p>}
           </>
         )}
       </div>

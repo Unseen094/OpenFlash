@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DrawingEngine, ToolState, defaultToolState, ToolType } from '../studio/engine/tools'
 import { VectorShape, renderShape } from '../studio/engine/shapes'
-import { TimelineState, Layer, createLayer, addKeyframe as addKeyframeToLayer, getShapesAtFrame, getOnionSkinFrames, removeKeyframe as removeKeyframeFromLayer } from '../studio/engine/timeline'
+import { TimelineState, createLayer, addKeyframe as addKeyframeToLayer, getOnionSkinFrames, removeKeyframe as removeKeyframeFromLayer } from '../studio/engine/timeline'
 import { AudioEngine } from '../studio/audio/synth'
 import { downloadExport, exportFrameAsPNG, exportFrameAsSVG } from '../studio/engine/exporter'
 import { Vector2, Transform, generateId } from '../studio/engine/math'
@@ -13,21 +13,11 @@ import {
   exportProjectJson, importProjectJson
 } from '../lib/projects'
 import {
-  CANVAS_PRESETS, snapPoint, alignShapes, distributeShapes, duplicateShapes,
-  changeZOrder, rotateCanvas, flipCanvas, zoomToFit, smoothPoints, getShapeBounds
+  snapPoint, alignShapes, distributeShapes, duplicateShapes,
+  changeZOrder, rotateCanvas, flipCanvas, zoomToFit
 } from '../studio/engine/canvas-features'
-import {
-  hexToRgb, rgbToHex, rgbToHsl, hslToRgb, formatColor, copyColorToClipboard,
-  COLOR_PALETTES, parseColorInput
-} from '../studio/engine/color-utils'
-import { createSelection, selectAll, invertSelection, selectByColor, expandSelection, lassoSelect, marqueeSelect, groupShapes, ungroupShapes } from '../studio/engine/selection'
-import { simplifyPath, closePath, openPath, reversePath, outlineStroke, bezierToPoints, pathUnion, pathSubtract, pathIntersect, pathExclude } from '../studio/engine/path-ops'
-import { easingFunctions, interpolateValue, interpolateTransform, generateTweenFrames } from '../studio/engine/easing'
-import { createEmitter, updateEmitter, renderParticles, ParticleEmitter } from '../studio/engine/particles'
-import { createWorld, createBody, stepWorld, PhysicsWorld, PhysicsBody } from '../studio/engine/physics'
-import { createLinearGradient, createRadialGradient, gradientToCss, gradientToCanvas, addGradientStop, removeGradientStop, updateGradientStop } from '../studio/engine/gradient'
+import { groupShapes } from '../studio/engine/selection'
 import { showToast } from '../components/Toast'
-import { importAudioFile } from '../studio/audio/audio-import'
 import { FullscreenPreview } from '../studio/components/FullscreenPreview'
 import { Toolbar } from '../studio/components/Toolbar'
 import { CanvasArea } from '../studio/components/CanvasArea'
@@ -38,61 +28,24 @@ import { ExplorerPanel } from '../studio/components/ExplorerPanel'
 import type { Asset, SvgElement } from '../studio/components/types'
 import { ContextMenu } from '../components/ContextMenu'
 import { KeyboardShortcuts } from '../components/KeyboardShortcuts'
-import {
-  IconArrowUpLeft, IconCircleFilled, IconPencil, IconCircleDotted, IconDiagonal,
+import { CollabBus } from '../studio/collab/collabBus'
+import { applyOp } from '../studio/collab/merge'
+import { CollabPanel } from '../studio/collab/CollabPanel'
+import type { PeerInfo } from '../studio/collab/types'
+import { IconArrowUpLeft, IconCircleFilled, IconPencil, IconCircleDotted, IconDiagonal,
   IconSquare, IconCircle, IconSquareHalf, IconDroplet, IconText,
-  IconLayers, IconTrash, IconCopy, IconPaste
+  IconLayers, IconTrash, IconCopy, IconPaste, IconUsers
 } from '../components/Icons'
-
-const CODE_PLACEHOLDER = [
-  '// OpenFlash TypeScript API Examples:',
-  '',
-  'const player = OpenFlash.createSprite({',
-  '  color: \'#00F0FF\',',
-  '  shape: \'rect\',',
-  '  width: 40,',
-  '  height: 24,',
-  '  x: 80,',
-  '  y: 200',
-  '})',
-  '',
-  "OpenFlash.on('tick', (delta) => {",
-  '  player.x += 100 * delta',
-  '})',
-  '',
-  "OpenFlash.on('pointerDown', (e) => {",
-  '  OpenFlash.drawParticle(e.x, e.y, {',
-  "    color: '#FFE600',",
-  '    count: 20',
-  '  })',
-  "  OpenFlash.playSound('hit')",
-  '})',
-  '',
-  "OpenFlash.on('keyDown', (e) => {",
-  "  if (e.key === 'ArrowRight') {",
-  '    player.x += 5',
-  '  }',
-  '})'
-].join('\n')
 
 const STAGE_WIDTH = 800
 const STAGE_HEIGHT = 450
-const GRID_SIZE = 32
-
-const buildContextMenuItems = (selIds: Set<string>, clip: VectorShape[], onCopy: () => void, onPaste: () => void, onDup: () => void, onGroup: () => void, onDel: () => void) => [
-  { label: 'Copy', icon: <IconCopy size={13} />, shortcut: 'Ctrl+C', onClick: onCopy, disabled: selIds.size === 0 },
-  { label: 'Paste', icon: <IconPaste size={13} />, shortcut: 'Ctrl+V', onClick: onPaste, disabled: clip.length === 0 },
-  { label: 'Duplicate', icon: <IconCopy size={13} />, shortcut: 'Ctrl+D', onClick: onDup, disabled: selIds.size === 0 },
-  { label: 'Group', icon: <IconLayers size={13} />, shortcut: 'Ctrl+G', onClick: onGroup, disabled: selIds.size < 2 },
-  { label: 'Delete', icon: <IconTrash size={13} />, shortcut: 'Del', onClick: onDel, danger: true, disabled: selIds.size === 0 }
-]
 
 /**
  * Returns a callback with a stable identity that always invokes the latest
  * closure. Needed so memoized children aren't invalidated every render by
  * freshly-allocated handler props.
  */
-function useStableCallback<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+function useStableCallback<A extends unknown[], R>(fn: (..._a: A) => R): (..._a: A) => R {
   const ref = useRef(fn)
   ref.current = fn
   return useCallback((...args: A) => ref.current(...args), [])
@@ -104,7 +57,6 @@ export default function StudioPage() {
   const drawEngineRef = useRef<DrawingEngine | null>(null)
   const audioEngineRef = useRef<AudioEngine | null>(null)
   const sandboxRef = useRef<StudioSandbox | null>(null)
-  const animFrameRef = useRef<number>(0)
 
   const [toolState, setToolState] = useState<ToolState>(defaultToolState)
   const [timeline, setTimeline] = useState<TimelineState>({
@@ -125,6 +77,8 @@ export default function StudioPage() {
   const [codeOutput, setCodeOutput] = useState('[console] Ready')
   const [isRunning, setIsRunning] = useState(false)
   const [activePanel, setActivePanel] = useState<'properties' | 'assets' | 'svg-maker' | 'code' | 'audio'>('properties')
+  const activePanelRef = useRef(activePanel)
+  activePanelRef.current = activePanel
   const [shaders, setShaders] = useState<Set<ShaderType>>(new Set())
   const [cursorPos, setCursorPos] = useState<Vector2>({ x: 0, y: 0 })
   const [fps, setFps] = useState(0)
@@ -132,24 +86,22 @@ export default function StudioPage() {
   const [timelineFps, setTimelineFps] = useState(60)
   const [undoStack, setUndoStack] = useState<VectorShape[][]>([])
   const [redoStack, setRedoStack] = useState<VectorShape[][]>([])
-  const [guides, setGuides] = useState<Array<{ id: string; orientation: 'horizontal' | 'vertical'; position: number }>>([])
+  const [guides] = useState<Array<{ id: string; orientation: 'horizontal' | 'vertical'; position: number }>>([])
   const [recentColors, setRecentColors] = useState<string[]>([])
   const [clipboard, setClipboard] = useState<VectorShape[]>([])
-  const [onionSkinOpacity, setOnionSkinOpacity] = useState(0.3)
-  const [onionSkinBefore, setOnionSkinBefore] = useState(2)
-  const [onionSkinAfter, setOnionSkinAfter] = useState(2)
-  const [loopRegion, setLoopRegion] = useState<{ start: number; end: number } | null>(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
-  const [assetSearch, setAssetSearch] = useState('')
-  const [activePalette, setActivePalette] = useState<keyof typeof COLOR_PALETTES>('material')
-  const [gradient, setGradient] = useState(createLinearGradient())
-  const [emitters, setEmitters] = useState<ParticleEmitter[]>([])
-  const [physicsWorld, setPhysicsWorld] = useState<PhysicsWorld | null>(null)
-  const [audioClips, setAudioClips] = useState<Array<{ id: string; name: string; duration: number; waveform: number[] }>>([])
-  const [showRulers, setShowRulers] = useState(false)
+  const [audioClips] = useState<Array<{ id: string; name: string; duration: number; waveform: number[] }>>([])
   const [unsavedChanges, setUnsavedChanges] = useState(false)
-  const [lastSaved, setLastSaved] = useState<number | null>(null)
+  const [, setLastSaved] = useState<number | null>(null)
+
+  // ─── Collab ─────────────────────────────────────────────────────────────────
+  const collabBusRef = useRef<CollabBus | null>(null)
+  const [collabEnabled, setCollabEnabled] = useState(false)
+  const [collabPeers, setCollabPeers] = useState<PeerInfo[]>([])
+  const [collabConnected, setCollabConnected] = useState(false)
+  const [collabName, setCollabName] = useState('')
+  const shapesSnapshotRef = useRef<VectorShape[]>([])
 
   // ─── Assets ─────────────────────────────────────────────────────────────────
   const [assets, setAssets] = useState<Asset[]>([])
@@ -157,7 +109,6 @@ export default function StudioPage() {
   const [svgElements, setSvgElements] = useState<SvgElement[]>([])
   const [svgSelectedId, setSvgSelectedId] = useState<string | null>(null)
   const [svgTool, setSvgTool] = useState<SvgElement['type'] | 'select'>('select')
-  const svgCanvasRef = useRef<HTMLCanvasElement>(null)
 
   // ─── Explorer ───────────────────────────────────────────────────────────────
   const [explorerTab, setExplorerTab] = useState<'layers' | 'assets' | 'shapes'>('layers')
@@ -174,23 +125,29 @@ export default function StudioPage() {
 
   const isDrawingRef = useRef(false)
   const lastMousePosRef = useRef<Vector2>({ x: 0, y: 0 })
-  const playStartTimeRef = useRef(0)
   const frameCountRef = useRef(0)
   const lastFpsTimeRef = useRef(performance.now())
 
   useEffect(() => {
-    drawEngineRef.current = new DrawingEngine(toolState)
+    drawEngineRef.current = new DrawingEngine(defaultToolState)
     audioEngineRef.current = new AudioEngine()
     sandboxRef.current = new StudioSandbox(overlayCanvasRef.current, (kind, message) => {
       if (kind === 'error') setCodeOutput(`[Error] ${message}`)
       else setCodeOutput(prev => prev === '[console] Ready' ? message : prev + '\n' + message)
     })
     return () => {
-      if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current)
       sandboxRef.current?.dispose()
       audioEngineRef.current?.dispose()
     }
   }, [])
+
+  useEffect(() => {
+    drawEngineRef.current?.setToolState(toolState)
+  }, [toolState])
+
+  useEffect(() => {
+    drawEngineRef.current?.setShapes(shapes)
+  }, [shapes])
 
   const getCanvasPoint = useCallback((e: React.MouseEvent | MouseEvent): Vector2 => {
     const canvas = canvasRef.current
@@ -422,25 +379,73 @@ export default function StudioPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
+  // ─── Collab connect / disconnect ──────────────────────────────────────────────
+  useEffect(() => {
+    if (!collabEnabled) return
+    const bus = new CollabBus(user?.displayName || user?.email?.split('@')[0] || undefined)
+    collabBusRef.current = bus
+    bus.connect()
+    setCollabConnected(true)
+    setCollabName(bus.getPeerName())
+
+    const unsub = bus.onOp(op => {
+      if (op.type === 'join' || op.type === 'presence' || op.type === 'leave' || op.type === 'cursor-move') {
+        setCollabPeers(bus.getPeers())
+        return
+      }
+      // Shape operations from remote peers
+      if (op.type !== 'shape-add' && op.type !== 'shape-update' && op.type !== 'shape-delete' && op.type !== 'shapes-sync') return
+      if (op.peerId === bus.getPeerId()) return
+      setShapes(prev => applyOp(prev, op))
+    })
+
+    return () => {
+      unsub()
+      bus.disconnect()
+      collabBusRef.current = null
+      setCollabConnected(false)
+      setCollabPeers([])
+    }
+  }, [collabEnabled, user])
+
+  // Broadcast local shape changes to collab peers
+  useEffect(() => {
+    const bus = collabBusRef.current
+    if (!bus) return
+    const prev = shapesSnapshotRef.current
+    shapesSnapshotRef.current = shapes
+    if (prev.length === 0 && shapes.length === 0) return
+    if (prev === shapes) return
+
+    // Simple diff: find added, updated, deleted
+    const prevIds = new Set(prev.map(s => s.id))
+    const currIds = new Set(shapes.map(s => s.id))
+
+    for (const s of shapes) {
+      if (!prevIds.has(s.id)) {
+        bus.broadcastShapeAdd(s)
+      } else {
+        const old = prev.find(p => p.id === s.id)
+        if (old && JSON.stringify(old) !== JSON.stringify(s)) {
+          bus.broadcastShapeUpdate(s)
+        }
+      }
+    }
+    for (const id of prevIds) {
+      if (!currIds.has(id)) {
+        bus.broadcastShapeDelete(id)
+      }
+    }
+  }, [shapes])
+
   useEffect(() => {
     const layer = timeline.layers.find(l => l.id === selectedLayerId)
     if (!layer) return
 
     const kf = layer.keyframes.find(k => k.frame === timeline.currentFrame)
-    let nextShapes: VectorShape[]
-    if (kf) {
-      nextShapes = [kf.shape]
-    } else {
-      nextShapes = []
-      for (let i = 0; i < layer.keyframes.length; i++) {
-        const k = layer.keyframes[i]
-        if (k.frame <= timeline.currentFrame) {
-          if (i === layer.keyframes.length - 1 || layer.keyframes[i + 1].frame > timeline.currentFrame) {
-            nextShapes.push(k.shape)
-          }
-        }
-      }
-    }
+    if (!kf) return
+
+    const nextShapes: VectorShape[] = [kf.shape]
 
     // Only replace the working shapes when the timeline actually resolves to a
     // different set of shapes. Without this guard, unrelated timeline updates
@@ -507,7 +512,10 @@ export default function StudioPage() {
 
   const handleCanvasMouseMove = (e: React.MouseEvent) => {
     const point = getCanvasPoint(e)
-    setCursorPos({ x: Math.round(point.x), y: Math.round(point.y) })
+    if (activePanelRef.current === 'properties') {
+      setCursorPos({ x: Math.round(point.x), y: Math.round(point.y) })
+    }
+    collabBusRef.current?.updateCursor(point.x, point.y)
 
     if (sandboxRef.current?.isRunning) {
       sandboxRef.current.forwardPointer('pointerMove', point.x, point.y)
@@ -578,18 +586,14 @@ export default function StudioPage() {
   const addKeyframe = () => {
     const layer = timeline.layers.find(l => l.id === selectedLayerId)
     if (!layer || layer.locked) return
-    const currentShape = shapes[0] || {
-      id: generateId(),
-      type: 'rectangle' as const,
-      name: 'Keyframe',
-      transform: { x: 400, y: 225, scaleX: 1, scaleY: 1, rotation: 0, alpha: 1 },
-      fill: { type: 'solid' as const, color: { r: 255, g: 230, b: 0, a: 1 } },
-      stroke: { color: { r: 255, g: 255, b: 255, a: 0.5 }, width: 1, cap: 'round' as const, join: 'round' as const },
-      visible: true,
-      locked: false,
-      points: [{ x: -25, y: -25 }, { x: 25, y: -25 }, { x: 25, y: 25 }, { x: -25, y: 25 }],
-      closed: true
+    if (shapes.length === 0) {
+      setCodeOutput('[console] Nothing on the stage yet — draw a shape first.')
+      return
     }
+    if (shapes.length > 1) {
+      setCodeOutput('[console] Keyframes capture one shape per layer. Use a fresh layer for each element.')
+    }
+    const currentShape = shapes[0]
     const updatedLayer = addKeyframeToLayer(layer, timeline.currentFrame, currentShape)
     setTimeline(prev => ({
       ...prev,
@@ -650,9 +654,9 @@ export default function StudioPage() {
     exportFrameAsSVG(shapes, STAGE_WIDTH, STAGE_HEIGHT)
   }
 
-  const refreshSavedProjects = () => {
+  const refreshSavedProjects = useCallback(() => {
     setSavedProjects(listProjects(owner))
-  }
+  }, [owner])
 
   const applyProject = (p: ProjectData) => {
     setCurrentProjectId(p.id)
@@ -675,7 +679,7 @@ export default function StudioPage() {
     }
     refreshSavedProjects()
     loadedProjectRef.current = true
-  }, [])
+  }, [refreshSavedProjects])
 
   const saveCurrentProject = () => {
     const project: ProjectData = {
@@ -717,7 +721,7 @@ export default function StudioPage() {
       setCurrentProjectId(project.id)
     }, 800)
     return () => clearTimeout(timer)
-  }, [shapes, code, timeline, shaders, projectAutosave])
+  }, [shapes, code, timeline, shaders, projectAutosave, currentProjectId, owner, projectName])
 
   const handleNewProject = () => {
     const fresh = createEmptyProject(owner, 'Untitled Project')
@@ -760,7 +764,7 @@ export default function StudioPage() {
   const handleImportJson = (file: File) => {
     const reader = new FileReader()
     reader.onload = () => {
-      const p = importProjectJson(String(reader.result), owner)
+      const p = importProjectJson(typeof reader.result === 'string' ? reader.result : '', owner)
       if (p) {
         applyProject(p)
         audioEngineRef.current?.playClick(0.08)
@@ -777,7 +781,7 @@ export default function StudioPage() {
       if (!file.type.startsWith('image/') && !file.type.includes('svg')) return
       const reader = new FileReader()
       reader.onload = () => {
-        const src = String(reader.result)
+        const src = typeof reader.result === 'string' ? reader.result : ''
         const isSvg = file.type.includes('svg') || file.name.endsWith('.svg')
         if (isSvg) {
           const asset: Asset = {
@@ -945,14 +949,6 @@ export default function StudioPage() {
     setPanOffset(pan)
   }
 
-  const addGuide = (orientation: 'horizontal' | 'vertical', position: number) => {
-    setGuides(prev => [...prev, { id: `guide_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`, orientation, position }])
-  }
-
-  const removeGuide = (id: string) => {
-    setGuides(prev => prev.filter(g => g.id !== id))
-  }
-
   const addRecentColor = (color: string) => {
     setRecentColors(prev => [color, ...prev.filter(c => c !== color)].slice(0, 12))
   }
@@ -977,72 +973,12 @@ export default function StudioPage() {
     showToast('Grouped shapes', 'success')
   }
 
-  const handleUngroup = () => {
-    const selected = shapes.filter(s => selectedShapeIds.has(s.id))
-    const hasGroup = selected.some(s => s.type === 'group')
-    if (!hasGroup) return
+const handlePaste = () => {
+    if (clipboard.length === 0) return
     pushUndo()
-    let result = shapes
-    for (const s of selected) {
-      if (s.type === 'group') result = ungroupShapes(result, s.id)
-    }
-    setShapes(result)
-    showToast('Ungrouped shapes', 'success')
-  }
-
-  const handleSelectAll = () => {
-    setSelectedShapeIds(new Set(shapes.map(s => s.id)))
-  }
-
-  const handleInvertSelection = () => {
-    setSelectedShapeIds(invertSelection(shapes, selectedShapeIds))
-  }
-
-  const handleCenterShape = () => {
-    if (selectedShapeIds.size === 0) return
-    pushUndo()
-    setShapes(prev => prev.map(s => {
-      if (!selectedShapeIds.has(s.id)) return s
-      return { ...s, transform: { ...s.transform, x: toolState.canvasWidth / 2, y: toolState.canvasHeight / 2 } }
-    }))
-  }
-
-  const handleAddEmitter = () => {
-    const emitter = createEmitter(toolState.canvasWidth / 2, toolState.canvasHeight / 2)
-    setEmitters(prev => [...prev, emitter])
-    showToast('Particle emitter added', 'success')
-  }
-
-  const handleTogglePhysics = () => {
-    if (physicsWorld) {
-      setPhysicsWorld(null)
-      showToast('Physics simulation stopped', 'info')
-    } else {
-      setPhysicsWorld(createWorld())
-      showToast('Physics simulation started', 'success')
-    }
-  }
-
-  const handleImportAudio = (file: File) => {
-    importAudioFile(file).then((clip) => {
-      setAudioClips(prev => [...prev, { id: clip.id, name: clip.name, duration: clip.duration, waveform: clip.waveform }])
-      showToast(`Imported ${clip.name}`, 'success')
-    }).catch(() => showToast('Failed to import audio', 'error'))
-  }
-
-  const handleSimplifyPath = () => {
-    if (selectedShapeIds.size !== 1) return
-    pushUndo()
-    setShapes(prev => prev.map(s => {
-      if (!selectedShapeIds.has(s.id) || !s.points) return s
-      return { ...s, points: simplifyPath(s.points, 2) }
-    }))
-  }
-
-  const handleOutlineStroke = () => {
-    if (selectedShapeIds.size !== 1) return
-    pushUndo()
-    setShapes(prev => prev.map(s => selectedShapeIds.has(s.id) ? outlineStroke(s) : s))
+    const pasted = clipboard.map(s => ({ ...s, id: generateId(), transform: { ...s.transform, x: s.transform.x + 30, y: s.transform.y + 30 } }))
+    setShapes(prev => [...prev, ...pasted])
+    showToast(`Pasted ${pasted.length} shape${pasted.length > 1 ? 's' : ''}`, 'success')
   }
 
   const saveToLocalStorage = useCallback(() => {
@@ -1055,14 +991,6 @@ export default function StudioPage() {
     setUnsavedChanges(false)
     setLastSaved(Date.now())
   }, [saveToLocalStorage])
-
-  const handlePaste = () => {
-    if (clipboard.length === 0) return
-    pushUndo()
-    const pasted = clipboard.map(s => ({ ...s, id: generateId(), transform: { ...s.transform, x: s.transform.x + 30, y: s.transform.y + 30 } }))
-    setShapes(prev => [...prev, ...pasted])
-    showToast(`Pasted ${pasted.length} shape${pasted.length > 1 ? 's' : ''}`, 'success')
-  }
 
   const handleCanvasContextMenu = useStableCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -1104,7 +1032,7 @@ export default function StudioPage() {
     }
   }
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+  const handleKeyDown = useStableCallback((e: KeyboardEvent) => {
     if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return
 
     if (sandboxRef.current?.isRunning) {
@@ -1122,7 +1050,6 @@ export default function StudioPage() {
       case 'g': handleToolChange('bucket'); break
       case 'i': handleToolChange('eyedropper'); break
       case 'l': handleToolChange('line'); break
-      case 'e': handleToolChange('eraser'); break
       case 'F5': e.preventDefault(); break
       case 'F6': e.preventDefault(); addKeyframe(); break
       case 'F7': e.preventDefault(); addKeyframe(); break
@@ -1166,7 +1093,7 @@ export default function StudioPage() {
         setShowShortcuts(false)
         break
     }
-  }, [code, shapes, timeline, selectedShapeIds])
+  })
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown)
@@ -1191,14 +1118,6 @@ export default function StudioPage() {
     { id: 'text', icon: <IconText size={14} />, label: 'Text Tool', shortcut: 'T' },
     { id: 'bucket', icon: <IconSquareHalf size={14} />, label: 'Paint Bucket', shortcut: 'G' },
     { id: 'eyedropper', icon: <IconDroplet size={14} />, label: 'Eyedropper', shortcut: 'I' },
-  ]
-
-  const buildContextMenu = (selIds: Set<string>, clip: VectorShape[], onCopy: () => void, onPaste: () => void, onDup: () => void, onGroup: () => void, onDel: () => void) => [
-    { label: 'Copy', icon: <IconCopy size={13} />, shortcut: 'Ctrl+C', onClick: onCopy, disabled: selIds.size === 0 },
-    { label: 'Paste', icon: <IconPaste size={13} />, shortcut: 'Ctrl+V', onClick: onPaste, disabled: clip.length === 0 },
-    { label: 'Duplicate', icon: <IconCopy size={13} />, shortcut: 'Ctrl+D', onClick: onDup, disabled: selIds.size === 0 },
-    { label: 'Group', icon: <IconLayers size={13} />, shortcut: 'Ctrl+G', onClick: onGroup, disabled: selIds.size < 2 },
-    { label: 'Delete', icon: <IconTrash size={13} />, shortcut: 'Del', onClick: onDel, danger: true, disabled: selIds.size === 0 }
   ]
 
   const contextMenuItems = [
@@ -1287,6 +1206,7 @@ export default function StudioPage() {
             canvasHeight={toolState.canvasHeight}
             canvasBackground={toolState.canvasBackground}
             onContextMenu={handleCanvasContextMenu}
+            isEmpty={shapes.length === 0}
           />
           <TimelineArea
             timeline={timeline}
@@ -1307,7 +1227,7 @@ export default function StudioPage() {
             playbackSpeed={playbackSpeed}
             onPlaybackSpeedChange={setPlaybackSpeed}
             fps={timelineFps}
-            onFpsChange={setTimelineFps}
+            onFpsChange={(f: number) => { setTimelineFps(f); setTimeline(p => ({ ...p, fps: f })) }}
             loop={timeline.loop}
             onToggleLoop={() => setTimeline(p => ({ ...p, loop: !p.loop }))}
           />
@@ -1364,6 +1284,34 @@ export default function StudioPage() {
       )}
       {showShortcuts && <KeyboardShortcuts onClose={() => setShowShortcuts(false)} />}
       {contextMenu && <ContextMenu x={contextMenu.x} y={contextMenu.y} onClose={() => setContextMenu(null)} items={contextMenuItems} />}
+      {/* ─── Collab floating panel ──────────────────────────────────────────── */}
+      <div style={{ position: 'fixed', bottom: 16, left: 16, zIndex: 100, width: 220 }}>
+        {!collabEnabled ? (
+          <button
+            onClick={() => setCollabEnabled(true)}
+            className="btn btn-ghost btn-sm"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, width: '100%', justifyContent: 'center', border: '1px solid var(--line)' }}
+          >
+            <IconUsers size={13} /> Start Collab
+          </button>
+        ) : (
+          <>
+            <CollabPanel
+              peers={collabPeers}
+              peerName={collabName}
+              onNameChange={(name) => { collabBusRef.current?.setPeerName(name); setCollabName(name) }}
+              connected={collabConnected}
+            />
+            <button
+              onClick={() => setCollabEnabled(false)}
+              className="btn btn-ghost btn-sm"
+              style={{ fontSize: 10, width: '100%', justifyContent: 'center', border: '1px solid var(--line)', marginTop: 4 }}
+            >
+              Disconnect
+            </button>
+          </>
+        )}
+      </div>
     </div>
   )
 }

@@ -5,7 +5,6 @@ import { listWithdrawals, setWithdrawalStatus, totalPendingWithdrawals } from '.
 import { listPublishedGames } from '../lib/monetization/games'
 import { loadAdConfig, saveAdConfig, updateSlot } from '../lib/monetization/ads'
 import { COIN_LIST } from '../lib/monetization/coins'
-import { PLAN_LIST } from '../lib/monetization/plans'
 import type { AdConfig, PaymentOrder, WithdrawalRequest, PublishedGame, AdPlacement } from '../lib/monetization/types'
 
 type Tab = 'overview' | 'orders' | 'payments' | 'ads' | 'wallets' | 'creators' | 'analytics'
@@ -21,7 +20,7 @@ const PLACEMENT_LABELS: Record<AdPlacement, string> = {
 }
 
 export default function AdminPage() {
-  const { user, isAdmin } = useAuth()
+  const { isAdmin } = useAuth()
   const [tab, setTab] = useState<Tab>('overview')
   const [orders, setOrders] = useState<PaymentOrder[]>([])
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([])
@@ -82,8 +81,8 @@ export default function AdminPage() {
         ))}
       </div>
 
-      {tab === 'overview' && <OverviewTab orders={orders} totalRevenue={totalRevenue} pendingWd={pendingWd} games={games} stats={stats} />}
-      {tab === 'orders' && <OrdersTab orders={orders} onRefresh={refresh} />}
+      {tab === 'overview' && <OverviewTab totalRevenue={totalRevenue} pendingWd={pendingWd} games={games} stats={stats} />}
+      {tab === 'orders' && <OrdersTab orders={orders} />}
       {tab === 'payments' && <PaymentsTab orders={orders} />}
       {tab === 'ads' && <AdsTab config={adConfig} onSave={c => { saveAdConfig(c); setAdConfig(c) }} />}
       {tab === 'wallets' && <WalletsTab />}
@@ -99,8 +98,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 // ─── Overview ────────────────────────────────────────────────────────────────
 
-function OverviewTab({ orders, totalRevenue, pendingWd, games, stats }: {
-  orders: PaymentOrder[]
+function OverviewTab({ totalRevenue, pendingWd, games, stats }: {
   totalRevenue: number
   pendingWd: number
   games: PublishedGame[]
@@ -130,7 +128,7 @@ function OverviewTab({ orders, totalRevenue, pendingWd, games, stats }: {
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
 
-function OrdersTab({ orders, onRefresh }: { orders: PaymentOrder[]; onRefresh: () => void }) {
+function OrdersTab({ orders }: { orders: PaymentOrder[] }) {
   return (
     <div className="glass-panel" style={{ overflow: 'hidden' }}>
       <div style={{ padding: 16, borderBottom: '1px solid var(--border-subtle)' }}>
@@ -205,7 +203,7 @@ function PaymentsTab({ orders }: { orders: PaymentOrder[] }) {
 
 // ─── Ads ─────────────────────────────────────────────────────────────────────
 
-function AdsTab({ config, onSave }: { config: AdConfig; onSave: (c: AdConfig) => void }) {
+function AdsTab({ config, onSave }: { config: AdConfig; onSave: (_c: AdConfig) => void }) {
   const [local, setLocal] = useState(config)
   useEffect(() => { setLocal(config) }, [config])
 

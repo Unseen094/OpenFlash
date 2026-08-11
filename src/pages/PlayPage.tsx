@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { getPublishedGame, recordPlay } from '../lib/monetization/games'
 import { getLeaderboard, postScore } from '../lib/monetization/leaderboard'
@@ -6,7 +6,32 @@ import { loadProject } from '../lib/projects'
 import { StudioSandbox } from '../studio/runtime/sandbox'
 import AdSlot from '../components/AdSlot'
 import { getSlot, loadAdConfig } from '../lib/monetization/ads'
-import { IconArrowLeft, IconArrowRight, IconRefresh, IconTrophy } from '../components/Icons'
+import { IconArrowLeft, IconArrowRight, IconRefresh, IconTrophy, IconLock } from '../components/Icons'
+
+const AD_REVENUE_PER_PLAY = 0.003
+
+function hasUnlocked(gameId: string): boolean {
+  try {
+    const raw = localStorage.getItem('openflash_game_unlocks')
+    if (!raw) return false
+    const parsed: unknown = JSON.parse(raw)
+    const set = new Set<string>(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [])
+    return set.has(gameId)
+  } catch {
+    return false
+  }
+}
+
+function saveUnlock(gameId: string): void {
+  try {
+    const raw = localStorage.getItem('openflash_game_unlocks')
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    const list = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+    const set = new Set<string>(list)
+    set.add(gameId)
+    localStorage.setItem('openflash_game_unlocks', JSON.stringify([...set]))
+  } catch { /* noop */ }
+}
 
 export default function PlayPage() {
   const { gameId } = useParams<{ gameId: string }>()
@@ -24,6 +49,7 @@ export default function PlayPage() {
   }
   const { game, scores } = state
   const [adDone, setAdDone] = useState(false)
+  const [unlocked, setUnlocked] = useState(() => (gameId ? hasUnlocked(gameId) : false))
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const sandboxRef = useRef<StudioSandbox | null>(null)
   const playerNameRef = useRef('guest')
@@ -34,9 +60,11 @@ export default function PlayPage() {
   useEffect(() => {
     if (game && countedRef.current !== game.id) {
       countedRef.current = game.id
-      recordPlay(game.id, 0)
+      recordPlay(game.id, game.adsEnabled ? AD_REVENUE_PER_PLAY : 0)
     }
   }, [game])
+
+  const gameReady = adDone || !game?.adsEnabled
 
   useEffect(() => {
     if (!gameId) return
@@ -45,7 +73,7 @@ export default function PlayPage() {
   }, [gameId])
 
   useEffect(() => {
-    if (!adDone || !game) return
+    if (!gameReady || !game) return
     const canvas = canvasRef.current
     if (!canvas) return
     canvas.width = 800
@@ -68,37 +96,74 @@ export default function PlayPage() {
     if (project && project.code.trim()) {
       sandbox.run(project.code)
     } else {
-      sandbox.run(`// generic demo stand-in — publish real code from the studio
+      sandbox.run(`// Publish code from the studio to play here
 Open.on('tick', () => {
-  Open.drawRect(0, 0, 800, 450, '#0D0E12')
+  Open.drawText(160, 200, 'Not published yet — open the studio,\nwrite code, then publish.', '#888', 16)
 })`)
     }
+
+    const handlePointer = (type: 'pointerDown' | 'pointerUp' | 'pointerMove') => (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect()
+      const x = ((e.clientX - rect.left) / rect.width) * canvas.width
+      const y = ((e.clientY - rect.top) / rect.height) * canvas.height
+      sandbox.forwardPointer(type, x, y)
+    }
+    const onPointerDown = handlePointer('pointerDown')
+    const onPointerUp = handlePointer('pointerUp')
+    const onPointerMove = handlePointer('pointerMove')
+    canvas.addEventListener('pointerdown', onPointerDown)
+    canvas.addEventListener('pointerup', onPointerUp)
+    canvas.addEventListener('pointermove', onPointerMove)
+
     return () => {
+      canvas.removeEventListener('pointerdown', onPointerDown)
+      canvas.removeEventListener('pointerup', onPointerUp)
+      canvas.removeEventListener('pointermove', onPointerMove)
       sandbox.stop()
       sandboxRef.current = null
     }
-  }, [adDone, game])
+  }, [gameReady, game])
+
+  const restart = useCallback(() => {
+    if (!game) return
+    setLastScore(null)
+    sandboxRef.current?.stop()
+    const project = loadProject(game.projectId)
+    let code = project?.code || ''
+    if (!code.trim()) {
+      code = `// Publish code from the studio to play here
+Open.on('tick', () => {
+  Open.drawText(160, 200, 'Not published yet — open the studio,\nwrite code, then publish.', '#888', 16)
+})`
+    }
+    sandboxRef.current?.run(code)
+  }, [game])
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'r' && adDone && game) {
-        sandboxRef.current?.stop()
-        sandboxRef.current?.run(loadProject(game.projectId)?.code || '')
+      if (!gameReady || !game) return
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+        e.preventDefault()
+      }
+      if (e.key === 'r' && !(e.ctrlKey || e.metaKey)) {
+        restart()
+        return
+      }
+      if (!e.repeat) {
+        sandboxRef.current?.forwardKey('keyDown', e.key)
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [adDone, game])
-
-  const restart = () => {
-    if (!game) return
-    sandboxRef.current?.stop()
-    const project = loadProject(game.projectId)
-    if (sandboxRef.current) {
-      const code = project?.code || ''
-      if (code.trim()) sandboxRef.current.run(code)
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (!gameReady || !game) return
+      sandboxRef.current?.forwardKey('keyUp', e.key)
     }
-  }
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup', onKeyUp)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup', onKeyUp)
+    }
+  }, [gameReady, game, restart])
 
   if (!game) {
     return (
@@ -131,7 +196,27 @@ Open.on('tick', () => {
         </div>
       )}
 
-      {adDone && (
+      {game.priceUsd > 0 && !unlocked && (
+        <div className="glass-panel" style={{ padding: 40, textAlign: 'center', marginBottom: 20 }}>
+          <IconLock size={28} style={{ opacity: 0.7, marginBottom: 12 }} />
+          <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{game.title}</h3>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            This is a premium game — unlock it for ${game.priceUsd.toFixed(2)} to play and climb the leaderboard.
+          </p>
+          <button
+            onClick={() => { saveUnlock(game.id); setUnlocked(true) }}
+            className="btn btn-amber"
+            style={{ padding: '10px 28px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+          >
+            Unlock for ${game.priceUsd.toFixed(2)} <IconArrowRight size={13} />
+          </button>
+          <p className="tiny" style={{ marginTop: 12, opacity: 0.6 }}>
+            Demo environment — purchases are simulated and unlock is stored locally.
+          </p>
+        </div>
+      )}
+
+      {gameReady && (
         <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 560px', minWidth: 320 }}>
             <div className="panel corner" style={{ background: '#0D0E12', overflow: 'hidden' }}>

@@ -55,7 +55,7 @@ export class AudioEngine {
     this.isInitialized = true
   }
 
-  private async createReverb(): Promise<ConvolverNode> {
+  private createReverb(): ConvolverNode {
     const ctx = this.context!
     const rate = ctx.sampleRate
     const length = rate * 1.5
@@ -130,7 +130,7 @@ export class AudioEngine {
   playMelody(notes: Array<{ name: string; duration: number; type?: OscillatorType }>, bpm = 120): void {
     const beatDuration = 60 / bpm
     let time = 0
-    notes.forEach((note, i) => {
+    notes.forEach((note) => {
       setTimeout(() => {
         this.playNoteByName(note.name, note.type || 'square', note.duration * beatDuration)
       }, time * 1000)
@@ -213,7 +213,7 @@ export class AudioEngine {
   dispose(): void {
     this.stopAll()
     if (this.context) {
-      this.context.close()
+      void this.context.close()
       this.context = null
     }
     this.isInitialized = false

@@ -34,7 +34,7 @@ export default function KonamiOverlay() {
       ctx.fillStyle = 'rgba(10, 11, 14, 0.1)'
       ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-      particles.forEach((p, i) => {
+      particles.forEach(p => {
         p.x += p.vx
         p.y += p.vy
         p.life -= 0.01

@@ -1,27 +1,31 @@
+import type { VectorShape } from './shapes'
+import type { TimelineState } from './timeline'
+
 export interface RendererProvider {
   initialize(canvas: HTMLCanvasElement): Promise<void>
   render(scene: RenderScene): void
   dispose(): void
-  hitTest?(point: { x: number; y: number }, shapes: any[]): any | undefined
+  hitTest?(point: { x: number; y: number }, shapes: VectorShape[]): VectorShape | undefined
 }
 
 export interface RenderScene {
-  shapes: any[]
+  shapes: VectorShape[]
   selectedShapeIds: Set<string>
-  timeline: any
+  timeline: TimelineState
   zoom: number
   panOffset: { x: number; y: number }
   onionSkin: boolean
   shaders: Set<string>
-  toolState: any
+  toolState: Record<string, unknown>
   guides: Array<{ id: string; orientation: 'horizontal' | 'vertical'; position: number }>
 }
 
 export class Canvas2DRenderer implements RendererProvider {
   private ctx: CanvasRenderingContext2D | null = null
 
-  async initialize(canvas: HTMLCanvasElement): Promise<void> {
+  initialize(canvas: HTMLCanvasElement): Promise<void> {
     this.ctx = canvas.getContext('2d')
+    return Promise.resolve()
   }
 
   render(scene: RenderScene): void {
@@ -40,7 +44,8 @@ export class Canvas2DRenderer implements RendererProvider {
 export class WebGLRenderer implements RendererProvider {
   private gl: WebGL2RenderingContext | null = null
 
-  async initialize(canvas: HTMLCanvasElement): Promise<void> {
+  initialize(_canvas: HTMLCanvasElement): Promise<void> {
+    return Promise.resolve()
   }
 
   render(_scene: RenderScene): void {
@@ -48,6 +53,7 @@ export class WebGLRenderer implements RendererProvider {
   }
 
   dispose(): void {
+    this.gl = null
   }
 
   get context(): WebGL2RenderingContext | null {

@@ -1,4 +1,4 @@
-import { Vector2, generateId } from './math'
+import { generateId } from './math'
 
 export interface Particle {
   id: string
@@ -74,7 +74,7 @@ export const emitParticle = (emitter: ParticleEmitter): Particle => {
 }
 
 export const updateEmitter = (emitter: ParticleEmitter): ParticleEmitter => {
-  let particles = emitter.particles.map(p => ({
+  const particles = emitter.particles.map(p => ({
     ...p,
     x: p.x + p.vx,
     y: p.y + p.vy + emitter.gravity,

@@ -14,7 +14,10 @@
     "test:run": "vitest run",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "ci": "npm run type-check && npm run lint && npm run test:coverage"
+    "ci": "npm run type-check && npm run lint && npm run test:coverage",
+    "preview:netlify": "netlify dev",
+    "deploy": "netlify deploy --prod --dir=dist",
+    "deploy:draft": "netlify deploy --dir=dist"
   },
   "dependencies": {
     "firebase": "^12.17.1",

@@ -57,26 +57,6 @@ export default function App() {
   const konamiRef = useRef<string[]>([])
   const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a']
 
-  const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    konamiRef.current.push(e.key)
-    if (konamiRef.current.length > konamiCode.length) {
-      konamiRef.current.shift()
-    }
-    if (konamiRef.current.join(',') === konamiCode.join(',')) {
-      setKonamiActive(prev => !prev)
-      playKonamiSound()
-    }
-  }, [])
-
-  useEffect(() => {
-    ensureArcadeSeed()
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleKeyDown])
-
   const playKonamiSound = () => {
     try {
       const ctx = new AudioContext()
@@ -96,6 +76,26 @@ export default function App() {
     }
   }
 
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    konamiRef.current.push(e.key)
+    if (konamiRef.current.length > konamiCode.length) {
+      konamiRef.current.shift()
+    }
+    if (konamiRef.current.join(',') === konamiCode.join(',')) {
+      setKonamiActive(prev => !prev)
+      playKonamiSound()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    ensureArcadeSeed()
+  }, [])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
   return (
     <AuthProvider>
       <div style={{ minHeight: '100vh', position: 'relative' }}>

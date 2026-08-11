@@ -2,7 +2,7 @@ import DOMPurify from 'dompurify'
 
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
   if (node.nodeType !== 1) return
-  const el = node as Element
+  const el = node
   for (const attr of Array.from(el.attributes)) {
     const val = attr.value.replace(/\s/g, '').toLowerCase()
     if (val.includes('javascript:') || val.includes('data:text/html')) {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { createRepository, Result, formatStorageError } from './storage/repository'
-import { getStorageProvider, setStorageProvider, LocalStorageProvider, StorageProvider } from './storage/StorageProvider'
+import { createRepository, Result } from './storage/repository'
+import { setStorageProvider, LocalStorageProvider, StorageProvider } from './storage/StorageProvider'
 import { VectorShape } from '../studio/engine/shapes'
 import { TimelineState, createLayer } from '../studio/engine/timeline'
 
@@ -48,7 +48,7 @@ const BoundsSchema = z.object({
   maxY: z.number()
 })
 
-const FillStyleSchema: z.ZodType<any> = z.object({
+const FillStyleSchema: z.ZodType<unknown> = z.object({
   type: z.enum(['solid', 'linear', 'radial']),
   color: ColorSchema,
   gradient: z.object({
@@ -59,7 +59,7 @@ const FillStyleSchema: z.ZodType<any> = z.object({
   }).optional()
 })
 
-const StrokeStyleSchema: z.ZodType<any> = z.object({
+const StrokeStyleSchema: z.ZodType<unknown> = z.object({
   color: ColorSchema,
   width: z.number(),
   cap: z.enum(['butt', 'round', 'square']),
@@ -67,7 +67,7 @@ const StrokeStyleSchema: z.ZodType<any> = z.object({
   dashArray: z.array(z.number()).optional()
 })
 
-const FilterStyleSchema: z.ZodType<any> = z.object({
+const FilterStyleSchema: z.ZodType<unknown> = z.object({
   blur: z.number().optional(),
   glow: z.object({ color: ColorSchema, radius: z.number(), strength: z.number() }).optional(),
   dropShadow: z.object({ color: ColorSchema, offsetX: z.number(), offsetY: z.number(), blur: z.number() }).optional(),
@@ -75,7 +75,7 @@ const FilterStyleSchema: z.ZodType<any> = z.object({
   contrast: z.number().optional()
 })
 
-const VectorShapeSchema: z.ZodType<any> = z.lazy(() => z.object({
+const VectorShapeSchema: z.ZodType<unknown> = z.lazy(() => z.object({
   id: z.string(),
   type: z.enum(['rectangle', 'ellipse', 'polygon', 'path', 'text', 'bitmap', 'group']),
   name: z.string(),
@@ -94,7 +94,7 @@ const VectorShapeSchema: z.ZodType<any> = z.lazy(() => z.object({
   bounds: BoundsSchema.optional()
 }))
 
-const KeyframeSchema: z.ZodType<any> = z.object({
+const KeyframeSchema: z.ZodType<unknown> = z.object({
   frame: z.number(),
   shape: VectorShapeSchema,
   tweenType: z.enum(['motion', 'shape', 'none']),
@@ -102,7 +102,7 @@ const KeyframeSchema: z.ZodType<any> = z.object({
   tweenPath: z.array(z.object({ x: z.number(), y: z.number() })).optional()
 })
 
-const LayerSchema: z.ZodType<any> = z.object({
+const LayerSchema: z.ZodType<unknown> = z.object({
   id: z.string(),
   name: z.string(),
   visible: z.boolean(),
@@ -111,7 +111,7 @@ const LayerSchema: z.ZodType<any> = z.object({
   color: z.string()
 })
 
-const TimelineSchema: z.ZodType<any> = z.object({
+const TimelineSchema: z.ZodType<unknown> = z.object({
   layers: z.array(LayerSchema),
   currentFrame: z.number(),
   totalFrames: z.number(),
@@ -166,14 +166,15 @@ function sanitizeForPrototypePollution(data: unknown): unknown {
   return data
 }
 
-export function migrateProject(data: any): ProjectData {
+export function migrateProject(data: unknown): ProjectData {
   if (!data || typeof data !== 'object') {
     throw new Error('Invalid project data')
   }
-  if (data.version === 1) {
-    return data as ProjectData
+  const record = data as Record<string, unknown>
+  if (record.version === 1) {
+    return record as unknown as ProjectData
   }
-  const migrated: any = { ...data }
+  const migrated: Record<string, unknown> = { ...record }
   if (!migrated.version) {
     migrated.version = 1
     migrated.autosave = migrated.autosave ?? false
@@ -186,7 +187,7 @@ export function migrateProject(data: any): ProjectData {
       loop: true
     }
   }
-  return migrated as ProjectData
+  return migrated as unknown as ProjectData
 }
 
 export function createEmptyProject(owner: string, name = 'Untitled Project'): ProjectData {
@@ -291,7 +292,7 @@ export function exportProjectJson(project: ProjectData): string {
 
 export function importProjectJson(json: string, owner: string): ProjectData | null {
   try {
-    const raw = JSON.parse(json)
+    const raw = JSON.parse(json) as unknown
     const clean = sanitizeForPrototypePollution(raw) as Record<string, unknown>
     const now = Date.now()
     const project: ProjectData = {

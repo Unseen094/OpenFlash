@@ -116,13 +116,12 @@ const generateShapesCode = (shapes: VectorShape[]): string => {
         break
       case 'polygon':
         if (shape.points && shape.points.length >= 3) {
-          const pts = shape.points.map(p => `${p.x},${p.y}`).join(',')
-          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.closePath();this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
+          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points[0].x},${shape.points[0].y});${shape.points.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.closePath();this.ctx.fillStyle=${fill};this.ctx.fill();this.ctx.restore();`)
         }
         break
       case 'path':
         if (shape.points && shape.points.length >= 2) {
-          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points![0].x},${shape.points![0].y});${shape.points!.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.strokeStyle=${stroke};this.ctx.lineWidth=${shape.stroke?.width || 2};this.ctx.stroke();this.ctx.restore();`)
+          renderCalls.push(`this.ctx.save();this.ctx.globalAlpha=${shape.transform.alpha};this.ctx.translate(${x},${y});this.ctx.beginPath();this.ctx.moveTo(${shape.points[0].x},${shape.points[0].y});${shape.points.slice(1).map(p => `this.ctx.lineTo(${p.x},${p.y});`).join('')}this.ctx.strokeStyle=${stroke};this.ctx.lineWidth=${shape.stroke?.width || 2};this.ctx.stroke();this.ctx.restore();`)
         }
         break
     }

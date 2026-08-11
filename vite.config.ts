@@ -7,9 +7,9 @@ const cspHeader = {
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: https: blob:",
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' https://api.qrserver.com https://api.coingecko.com https://identitytoolkit.googleapis.com https://*.firebaseapp.com",
+    "connect-src 'self' https://api.qrserver.com https://api.coingecko.com https://identitytoolkit.googleapis.com https://*.firebaseapp.com https://*.googleapis.com wss:",
     "frame-src 'self' https://accounts.google.com https://*.firebaseapp.com",
     "object-src 'none'",
     "base-uri 'self'",
@@ -38,12 +38,16 @@ export default defineConfig({
     }
   },
   preview: {
+    port: 3000,
+    host: true,
     headers: {
       'Content-Security-Policy': cspHeader['Content-Security-Policy']
     }
   },
   build: {
     sourcemap: false,
+    target: 'es2020',
+    cssCodeSplit: true,
     rollupOptions: {
       output: {
         manualChunks: {

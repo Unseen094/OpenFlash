@@ -1,4 +1,5 @@
-import type { Plan, PlanId } from './types'
+import type { Plan, PlanId, PaymentOrder } from './types'
+import { createOrder, listPaymentsByUser, getPayment, setStatus } from './payments'
 
 /**
  * Three creator plans.
@@ -75,4 +76,33 @@ export const PLAN_LIST: Plan[] = [PLANS.beta, PLANS.sigma, PLANS.alpha]
 
 export function getPlan(id: PlanId): Plan {
   return PLANS[id]
+}
+
+export function isPlanId(value: string): value is PlanId {
+  return value === 'beta' || value === 'sigma' || value === 'alpha'
+}
+
+/**
+ * A plan is entitled when a paid order exists for it. Plan purchases are
+ * stored as orders with `gameId` = `plan:<planId>`, so entitlement survives
+ * reloads and is derived from the same source of truth as every other sale.
+ */
+export function hasPlanEntitlement(userId: string, planId: PlanId): boolean {
+  return listPaymentsByUser(userId).some(p => p.gameId === `plan:${planId}` && p.status === 'paid')
+}
+
+/** Free (Beta) plans skip the crypto flow and are activated directly. */
+export function activateFreePlan(userId: string, planId: PlanId): PaymentOrder | null {
+  const plan = PLANS[planId]
+  if (!plan || plan.priceUsd > 0) return null
+  const order = createOrder({
+    userId,
+    gameId: `plan:${planId}`,
+    gameTitle: `Plan: ${plan.name}`,
+    coin: 'btc',
+    amountUsd: 0,
+    rate: 1
+  })
+  setStatus(order.id, 'paid')
+  return getPayment(order.id)
 }

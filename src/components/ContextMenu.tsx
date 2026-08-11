@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { IconCopy, IconTrash, IconUndo, IconRedo, IconLayers, IconCopy as IconPaste } from './Icons'
 
 export interface ContextMenuItem {
   label: string

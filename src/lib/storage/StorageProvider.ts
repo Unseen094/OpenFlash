@@ -6,22 +6,24 @@ export interface StorageProvider {
 }
 
 export class LocalStorageProvider implements StorageProvider {
-  async get<T>(key: string): Promise<T | null> {
+  get<T>(key: string): Promise<T | null> {
     const raw = localStorage.getItem(key)
-    if (raw === null) return null
+    if (raw === null) return Promise.resolve(null)
     try {
-      return JSON.parse(raw) as T
+      return Promise.resolve(JSON.parse(raw) as T)
     } catch {
-      return null
+      return Promise.resolve(null)
     }
   }
 
-  async set<T>(key: string, value: T): Promise<void> {
+  set<T>(key: string, value: T): Promise<void> {
     localStorage.setItem(key, JSON.stringify(value))
+    return Promise.resolve()
   }
 
-  async remove(key: string): Promise<void> {
+  remove(key: string): Promise<void> {
     localStorage.removeItem(key)
+    return Promise.resolve()
   }
 
   subscribe(key: string, callback: (value: unknown) => void): () => void {
@@ -44,15 +46,15 @@ export class FirestoreProvider implements StorageProvider {
     throw new Error('FirestoreProvider is not implemented. Please use LocalStorageProvider.')
   }
 
-  async get<T>(_key: string): Promise<T | null> {
+  get<T>(_key: string): Promise<T | null> {
     throw new Error('FirestoreProvider is not implemented.')
   }
 
-  async set<T>(_key: string, _value: T): Promise<void> {
+  set<T>(_key: string, _value: T): Promise<void> {
     throw new Error('FirestoreProvider is not implemented.')
   }
 
-  async remove(_key: string): Promise<void> {
+  remove(_key: string): Promise<void> {
     throw new Error('FirestoreProvider is not implemented.')
   }
 }

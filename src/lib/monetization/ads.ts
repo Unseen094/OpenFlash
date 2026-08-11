@@ -23,7 +23,7 @@ export function loadAdConfig(): AdConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return structuredClone(DEFAULT_AD_CONFIG)
-    return { ...structuredClone(DEFAULT_AD_CONFIG), ...JSON.parse(raw) }
+    return { ...structuredClone(DEFAULT_AD_CONFIG), ...JSON.parse(raw) as Partial<AdConfig> }
   } catch {
     return structuredClone(DEFAULT_AD_CONFIG)
   }
@@ -40,7 +40,7 @@ export function resetAdConfig(): AdConfig {
   return structuredClone(DEFAULT_AD_CONFIG)
 }
 
-type AdConfigListener = (config: AdConfig) => void
+type AdConfigListener = (_config: AdConfig) => void
 
 const listeners = new Set<AdConfigListener>()
 let storageBound = false
