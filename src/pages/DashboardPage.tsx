@@ -55,9 +55,6 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Link to="/templates" className="btn btn-ghost" style={{ textDecoration: 'none' }}>
-            Start from Template
-          </Link>
           <button className="btn btn-amber" onClick={handleNewProject}>
             + New Project
           </button>
@@ -130,7 +127,7 @@ export default function DashboardPage() {
               fontSize: 12,
               color: 'var(--text-muted)'
             }}>
-              No data yet
+              Your activity appears here as you build, publish and play.
             </div>
             <div style={{
               display: 'flex',

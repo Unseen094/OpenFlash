@@ -26,7 +26,7 @@ export default function QrCode({ data, size = 200, className }: QrCodeProps) {
       width: size,
       margin: 2,
       errorCorrectionLevel: 'M',
-      color: { dark: '#FFFFFFFF', light: '#0D0E12FF' }
+      color: { dark: '#1A1A1AFF', light: '#FFFFFFFF' }
     })
       .then(() => {
         if (!cancelled) setFailed(false)
@@ -63,7 +63,7 @@ export default function QrCode({ data, size = 200, className }: QrCodeProps) {
         width: size,
         height: size,
         borderRadius: 'var(--radius-sm)',
-        background: '#0D0E12'
+        background: '#FFFFFF'
       }}
     />
   )

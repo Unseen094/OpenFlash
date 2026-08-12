@@ -1,40 +1,20 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { getPublishedGame, recordPlay } from '../lib/monetization/games'
+import { hasGameEntitlement } from '../lib/monetization/games'
 import { getLeaderboard, postScore } from '../lib/monetization/leaderboard'
 import { loadProject } from '../lib/projects'
-import { StudioSandbox } from '../studio/runtime/sandbox'
-import AdSlot from '../components/AdSlot'
-import { getSlot, loadAdConfig } from '../lib/monetization/ads'
+import { getOfficialGame } from '../lib/officialGames'
 import { IconArrowLeft, IconArrowRight, IconRefresh, IconTrophy, IconLock } from '../components/Icons'
 
-const AD_REVENUE_PER_PLAY = 0.003
-
-function hasUnlocked(gameId: string): boolean {
-  try {
-    const raw = localStorage.getItem('openflash_game_unlocks')
-    if (!raw) return false
-    const parsed: unknown = JSON.parse(raw)
-    const set = new Set<string>(Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [])
-    return set.has(gameId)
-  } catch {
-    return false
-  }
-}
-
-function saveUnlock(gameId: string): void {
-  try {
-    const raw = localStorage.getItem('openflash_game_unlocks')
-    const parsed: unknown = raw ? JSON.parse(raw) : []
-    const list = Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
-    const set = new Set<string>(list)
-    set.add(gameId)
-    localStorage.setItem('openflash_game_unlocks', JSON.stringify([...set]))
-  } catch { /* noop */ }
-}
+type HostMessage = { kind: string }
 
 export default function PlayPage() {
   const { gameId } = useParams<{ gameId: string }>()
+  const { user } = useAuth()
+  const userId = user ? (user.uid || user.email || '') : ''
+
   const [state, setState] = useState(() => ({
     gameId,
     game: gameId ? getPublishedGame(gameId) : null,
@@ -48,23 +28,26 @@ export default function PlayPage() {
     })
   }
   const { game, scores } = state
-  const [adDone, setAdDone] = useState(false)
-  const [unlocked, setUnlocked] = useState(() => (gameId ? hasUnlocked(gameId) : false))
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const sandboxRef = useRef<StudioSandbox | null>(null)
-  const playerNameRef = useRef('guest')
-  const [lastScore, setLastScore] = useState<number | null>(null)
-  const [sidebarSlot] = useState(() => getSlot(loadAdConfig(), 'sidebar'))
 
+  const frameRef = useRef<HTMLIFrameElement>(null)
+  const playerNameRef = useRef('guest')
+  const readyRef = useRef(false)
+  const codeRef = useRef('')
   const countedRef = useRef<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [lastScore, setLastScore] = useState<number | null>(null)
+  const [touched, setTouched] = useState<'up' | 'down' | 'left' | 'right' | 'jump' | null>(null)
+
+  const paid = (game?.priceUsd ?? 0) > 0
+  const entitled = paid && Boolean(userId) && hasGameEntitlement(userId, gameId || '')
+  const canPlay = !paid || entitled
+
   useEffect(() => {
     if (game && countedRef.current !== game.id) {
       countedRef.current = game.id
-      recordPlay(game.id, game.adsEnabled ? AD_REVENUE_PER_PLAY : 0)
+      recordPlay(game.id, 0)
     }
   }, [game])
-
-  const gameReady = adDone || !game?.adsEnabled
 
   useEffect(() => {
     if (!gameId) return
@@ -73,75 +56,57 @@ export default function PlayPage() {
   }, [gameId])
 
   useEffect(() => {
-    if (!gameReady || !game) return
-    const canvas = canvasRef.current
-    if (!canvas) return
-    canvas.width = 800
-    canvas.height = 450
-
-    const project = loadProject(game.projectId)
-    const sandbox = new StudioSandbox(
-      canvas,
-      () => {},
-      (name, value) => {
-        if (name !== 'score') return
-        const { score } = value as { score: number }
-        const board = postScore(game.id, playerNameRef.current, score)
-        setState(prev => ({ ...prev, scores: board }))
-        setLastScore(score)
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as HostMessage & { source?: string }
+      if (!data || typeof data !== 'object' || data.source !== 'openflash-player') return
+      if (data.kind === 'of:ready') {
+        readyRef.current = true
+        if (codeRef.current && frameRef.current) {
+          frameRef.current.contentWindow?.postMessage({ source: 'openflash-host', kind: 'of:load', code: codeRef.current }, '*')
+        }
+      } else if (data.kind === 'of:score' && game) {
+        const score = (data as { score?: number }).score
+        if (typeof score === 'number' && Number.isFinite(score)) {
+          const board = postScore(game.id, playerNameRef.current, score)
+          setState(prev => ({ ...prev, scores: board }))
+          setLastScore(score)
+        }
+      } else if (data.kind === 'of:error') {
+        setError((data as { message?: string }).message || 'The game could not start.')
       }
-    )
-    sandboxRef.current = sandbox
-
-    if (project && project.code.trim()) {
-      sandbox.run(project.code)
-    } else {
-      sandbox.run(`// Publish code from the studio to play here
-Open.on('tick', () => {
-  Open.drawText(160, 200, 'Not published yet — open the studio,\nwrite code, then publish.', '#888', 16)
-})`)
     }
-
-    const handlePointer = (type: 'pointerDown' | 'pointerUp' | 'pointerMove') => (e: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      const x = ((e.clientX - rect.left) / rect.width) * canvas.width
-      const y = ((e.clientY - rect.top) / rect.height) * canvas.height
-      sandbox.forwardPointer(type, x, y)
-    }
-    const onPointerDown = handlePointer('pointerDown')
-    const onPointerUp = handlePointer('pointerUp')
-    const onPointerMove = handlePointer('pointerMove')
-    canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointerup', onPointerUp)
-    canvas.addEventListener('pointermove', onPointerMove)
-
-    return () => {
-      canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('pointerup', onPointerUp)
-      canvas.removeEventListener('pointermove', onPointerMove)
-      sandbox.stop()
-      sandboxRef.current = null
-    }
-  }, [gameReady, game])
-
-  const restart = useCallback(() => {
-    if (!game) return
-    setLastScore(null)
-    sandboxRef.current?.stop()
-    const project = loadProject(game.projectId)
-    let code = project?.code || ''
-    if (!code.trim()) {
-      code = `// Publish code from the studio to play here
-Open.on('tick', () => {
-  Open.drawText(160, 200, 'Not published yet — open the studio,\nwrite code, then publish.', '#888', 16)
-})`
-    }
-    sandboxRef.current?.run(code)
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
   }, [game])
 
+  const runCode = useCallback((code: string) => {
+    codeRef.current = code
+    setError(null)
+    if (readyRef.current && frameRef.current) {
+      frameRef.current.contentWindow?.postMessage({ source: 'openflash-host', kind: 'of:load', code }, '*')
+    }
+  }, [])
+
   useEffect(() => {
+    if (!canPlay || !game) return
+    const official = gameId ? getOfficialGame(gameId) : undefined
+    const project = official ? null : loadProject(game.projectId)
+    const code = official?.code || project?.code || ''
+    if (!code.trim()) {
+      setError('This game has not been published yet.')
+      return
+    }
+    runCode(code)
+  }, [canPlay, game, gameId, runCode])
+
+  const restart = useCallback(() => {
+    setLastScore(null)
+    if (codeRef.current) runCode(codeRef.current)
+  }, [runCode])
+
+  useEffect(() => {
+    if (!canPlay || !game) return
     const onKey = (e: KeyboardEvent) => {
-      if (!gameReady || !game) return
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
         e.preventDefault()
       }
@@ -149,13 +114,14 @@ Open.on('tick', () => {
         restart()
         return
       }
-      if (!e.repeat) {
-        sandboxRef.current?.forwardKey('keyDown', e.key)
+      if (!e.repeat && frameRef.current) {
+        frameRef.current.contentWindow?.postMessage({ source: 'openflash-host', kind: 'of:key', action: 'down', key: e.key }, '*')
       }
     }
     const onKeyUp = (e: KeyboardEvent) => {
-      if (!gameReady || !game) return
-      sandboxRef.current?.forwardKey('keyUp', e.key)
+      if (frameRef.current) {
+        frameRef.current.contentWindow?.postMessage({ source: 'openflash-host', kind: 'of:key', action: 'up', key: e.key }, '*')
+      }
     }
     window.addEventListener('keydown', onKey)
     window.addEventListener('keyup', onKeyUp)
@@ -163,7 +129,11 @@ Open.on('tick', () => {
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKeyUp)
     }
-  }, [gameReady, game, restart])
+  }, [canPlay, game, restart])
+
+  const sendTouch = (key: string, down: boolean) => {
+    frameRef.current?.contentWindow?.postMessage({ source: 'openflash-host', kind: 'of:key', action: down ? 'down' : 'up', key }, '*')
+  }
 
   if (!game) {
     return (
@@ -176,111 +146,127 @@ Open.on('tick', () => {
     )
   }
 
-  return (
-    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px', minHeight: 'calc(100vh - 60px)' }}>
-      {game.adsEnabled && !adDone && (
-        <div className="glass-panel" style={{ padding: 40, textAlign: 'center', marginBottom: 20 }}>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-            Ad — game starts after this short break
-          </p>
-          <div style={{ maxWidth: 728, margin: '0 auto' }}>
-            <AdSlot config={getSlot(loadAdConfig(), 'before-article') || { placement: 'before-article', enabled: true, type: 'custom', customCode: '<div style="padding:20px;color:var(--text-muted);font-family:var(--font-mono);font-size:11px">Your ad here</div>' }} />
-          </div>
-          <button
-            onClick={() => setAdDone(true)}
-            className="btn btn-amber"
-            style={{ marginTop: 20, padding: '8px 24px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          >
-            Skip Ad <IconArrowRight size={13} />
-          </button>
-        </div>
-      )}
-
-      {game.priceUsd > 0 && !unlocked && (
-        <div className="glass-panel" style={{ padding: 40, textAlign: 'center', marginBottom: 20 }}>
+  if (!canPlay) {
+    return (
+      <div style={{ maxWidth: 560, margin: '0 auto', padding: '60px 24px' }}>
+        <div className="panel" style={{ padding: 32, textAlign: 'center' }}>
           <IconLock size={28} style={{ opacity: 0.7, marginBottom: 12 }} />
           <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>{game.title}</h3>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-            This is a premium game — unlock it for ${game.priceUsd.toFixed(2)} to play and climb the leaderboard.
+            This is a premium game. Unlock it for ${game.priceUsd.toFixed(2)} and climb the leaderboard.
           </p>
-          <button
-            onClick={() => { saveUnlock(game.id); setUnlocked(true) }}
-            className="btn btn-amber"
-            style={{ padding: '10px 28px', fontWeight: 700, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
-          >
+          <Link to={`/checkout?game=${encodeURIComponent(game.id)}&title=${encodeURIComponent(game.title)}`} className="btn btn-primary" style={{ padding: '10px 28px', fontWeight: 700, fontSize: 13, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             Unlock for ${game.priceUsd.toFixed(2)} <IconArrowRight size={13} />
-          </button>
-          <p className="tiny" style={{ marginTop: 12, opacity: 0.6 }}>
-            Demo environment — purchases are simulated and unlock is stored locally.
-          </p>
+          </Link>
         </div>
-      )}
+      </div>
+    )
+  }
 
-      {gameReady && (
-        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-          <div style={{ flex: '1 1 560px', minWidth: 320 }}>
-            <div className="panel corner" style={{ background: '#0D0E12', overflow: 'hidden' }}>
-              <div className="row-between" style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)' }}>
-                <span className="tiny">{game.title}</span>
-                <span className="tiny" style={{ color: 'var(--amber)' }}>
-                  {game.creatorName}
-                </span>
-              </div>
-              <canvas
-                ref={canvasRef}
-                style={{ display: 'block', width: '100%', maxWidth: 800, margin: '0 auto' }}
-              />
+  return (
+    <div style={{ maxWidth: 1100, margin: '0 auto', padding: '24px', minHeight: 'calc(100vh - 60px)' }}>
+      <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 560px', minWidth: 320 }}>
+          <div className="panel" style={{ overflow: 'hidden' }}>
+            <div className="row-between" style={{ padding: '8px 12px', borderBottom: '1px solid var(--line)' }}>
+              <span className="tiny">{game.title}</span>
+              <span className="tiny" style={{ color: 'var(--primary)' }}>
+                {game.creatorName}
+              </span>
             </div>
-            {lastScore !== null && (
-              <div className="panel" style={{ marginTop: 10, padding: '8px 12px', borderColor: 'rgba(255,212,0,0.4)' }}>
-                <span className="tiny" style={{ color: 'var(--amber)' }}>LAST SCORE {lastScore} — on the board below</span>
-              </div>
-            )}
-            <div className="row" style={{ marginTop: 12, gap: 8 }}>
-              <Link to="/arcade" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
-                <IconArrowLeft size={12} /> Arcade
-              </Link>
-              <button onClick={restart} className="btn btn-ghost btn-sm">
-                <IconRefresh size={12} /> Replay <kbd>R</kbd>
-              </button>
+            <iframe
+              ref={frameRef}
+              src="/player.html"
+              sandbox="allow-scripts"
+              title="OpenFlash player"
+              style={{ display: 'block', width: '100%', border: 'none', background: 'var(--bg)' }}
+            />
+          </div>
+          {error && (
+            <div style={{ marginTop: 10, padding: '10px 14px', border: '2px solid var(--danger)', color: 'var(--danger)', fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+          {lastScore !== null && (
+            <div className="panel" style={{ marginTop: 10, padding: '8px 12px' }}>
+              <span className="tiny" style={{ color: 'var(--primary)' }}>LAST SCORE {lastScore} — on the board below</span>
+            </div>
+          )}
+          <div className="row" style={{ marginTop: 12, gap: 8 }}>
+            <Link to="/arcade" className="btn btn-ghost btn-sm" style={{ textDecoration: 'none' }}>
+              <IconArrowLeft size={12} /> Arcade
+            </Link>
+            <button onClick={restart} className="btn btn-ghost btn-sm">
+              <IconRefresh size={12} /> Replay <kbd>R</kbd>
+            </button>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <span className="tiny" style={{ display: 'block', marginBottom: 8 }}>TOUCH CONTROLS</span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <TouchPad label="◀" onDown={() => sendTouch('ArrowLeft', true)} onUp={() => sendTouch('ArrowLeft', false)} />
+              <TouchPad label="▲" onDown={() => sendTouch('ArrowUp', true)} onUp={() => sendTouch('ArrowUp', false)} />
+              <TouchPad label="▼" onDown={() => sendTouch('ArrowDown', true)} onUp={() => sendTouch('ArrowDown', false)} />
+              <TouchPad label="▶" onDown={() => sendTouch('ArrowRight', true)} onUp={() => sendTouch('ArrowRight', false)} />
+              <TouchPad label="JUMP" onDown={() => sendTouch(' ', true)} onUp={() => sendTouch(' ', false)} accent />
             </div>
           </div>
+        </div>
 
-          <div style={{ flex: '0 1 260px', minWidth: 220 }}>
-            <div className="panel" style={{ overflow: 'hidden' }}>
-              <div className="panel-head">
-                <span className="tiny"><IconTrophy size={12} /> HIGH SCORES</span>
-              </div>
-              <div>
-                {scores.length === 0 ? (
-                  <div className="empty-state" style={{ border: 'none', padding: '24px 12px' }}>
-                    No scores yet. Beat the game and your name goes here.
-                  </div>
-                ) : (
-                  <table className="table">
-                    <tbody>
-                      {scores.map((s, i) => (
-                        <tr key={i}>
-                          <td className="tiny" style={{ width: 28, color: i === 0 ? 'var(--amber)' : 'var(--ink-3)' }}>#{i + 1}</td>
-                          <td style={{ fontSize: 12, fontWeight: 600 }}>{s.player}</td>
-                          <td className="mono" style={{ textAlign: 'right', fontSize: 12, color: i === 0 ? 'var(--amber)' : 'var(--ink-2)' }}>
-                            {s.score.toLocaleString()}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+        <div style={{ flex: '0 1 260px', minWidth: 220 }}>
+          <div className="panel" style={{ overflow: 'hidden' }}>
+            <div className="panel-head">
+              <span className="tiny"><IconTrophy size={12} /> HIGH SCORES</span>
             </div>
-            {sidebarSlot && (
-              <div style={{ marginTop: 12 }}>
-                <AdSlot config={sidebarSlot} />
-              </div>
-            )}
+            <div>
+              {scores.length === 0 ? (
+                <div className="empty-state" style={{ border: 'none', padding: '24px 12px' }}>
+                  No scores yet. Beat the game and your name goes here.
+                </div>
+              ) : (
+                <table className="table">
+                  <tbody>
+                    {scores.map((s, i) => (
+                      <tr key={i}>
+                        <td className="tiny" style={{ width: 28, color: i === 0 ? 'var(--amber)' : 'var(--ink-3)' }}>#{i + 1}</td>
+                        <td style={{ fontSize: 12, fontWeight: 600 }}>{s.player}</td>
+                        <td className="mono" style={{ textAlign: 'right', fontSize: 12, color: i === 0 ? 'var(--amber)' : 'var(--ink-2)' }}>
+                          {s.score.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
-      )}
+      </div>
     </div>
+  )
+}
+
+function TouchPad({ label, onDown, onUp, accent }: { label: string; onDown: () => void; onUp: () => void; accent?: boolean }) {
+  const [held, setHeld] = useState(false)
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    if (active && !held) {
+      onDown()
+      setHeld(true)
+    } else if (!active && held) {
+      onUp()
+      setHeld(false)
+    }
+  }, [active, held, onDown, onUp])
+  return (
+    <button
+      onPointerDown={e => { e.preventDefault(); setActive(true) }}
+      onPointerUp={() => setActive(false)}
+      onPointerLeave={() => setActive(false)}
+      onPointerCancel={() => setActive(false)}
+      className={`btn ${accent ? 'btn-primary' : 'btn-ghost'}`}
+      style={{ flex: 1, minWidth: 48, padding: '12px 8px', fontSize: 13, touchAction: 'none', userSelect: 'none' }}
+    >
+      {label}
+    </button>
   )
 }

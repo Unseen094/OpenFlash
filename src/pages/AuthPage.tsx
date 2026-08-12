@@ -85,18 +85,20 @@ export default function AuthPage() {
       padding: 40
     }}>
 <div className="glass-panel animate-slide-up" style={{ width: 400, padding: 40, position: 'relative' }}>
-          <div className="panel corner" style={{
-            padding: '10px 14px',
-            marginBottom: 20,
-            display: 'flex', alignItems: 'center', gap: 8,
-            background: 'rgba(255, 138, 0, 0.05)',
-            borderColor: 'rgba(255, 138, 0, 0.3)'
-          }}>
-            <IconWarning size={14} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)' }}>
-              DEMO MODE — instant access, one click
-            </span>
-          </div>
+          {!isConfigured && (
+            <div className="panel corner" style={{
+              padding: '10px 14px',
+              marginBottom: 20,
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: 'rgba(254, 166, 25, 0.08)',
+              borderColor: 'rgba(254, 166, 25, 0.4)'
+            }}>
+              <IconWarning size={14} />
+              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--accent-orange)' }}>
+                GUEST MODE — no sign-in service configured, one-click access
+              </span>
+            </div>
+          )}
 
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div className="nav-mark" style={{ width: 48, height: 48, margin: '0 auto 12px', fontSize: 18 }}>OF</div>

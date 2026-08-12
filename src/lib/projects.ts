@@ -119,7 +119,7 @@ const TimelineSchema: z.ZodType<unknown> = z.object({
   loop: z.boolean()
 })
 
-const ProjectDataSchema: z.ZodType<ProjectData> = z.object({
+const ProjectDataSchema = z.object({
   id: z.string(),
   name: z.string().max(200),
   owner: z.string(),
@@ -131,7 +131,7 @@ const ProjectDataSchema: z.ZodType<ProjectData> = z.object({
   shaders: z.array(z.string()),
   autosave: z.boolean(),
   version: z.number()
-})
+}) as z.ZodType<ProjectData>
 
 export { setStorageProvider, LocalStorageProvider }
 export type { StorageProvider }

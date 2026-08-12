@@ -7,7 +7,6 @@ const navItems = [
   { path: '/', label: 'Home', index: '00' },
   { path: '/arcade', label: 'Arcade', index: '01' },
   { path: '/studio', label: 'Studio', index: '02' },
-  { path: '/templates', label: 'Templates', index: '03' },
   { path: '/dashboard', label: 'Hub', index: '04' },
   { path: '/docs', label: 'Docs', index: '05' },
 ]

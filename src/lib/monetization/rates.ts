@@ -13,14 +13,17 @@ interface RatesCache {
 }
 
 /**
- * Demo fallback rates used when the network fetch fails or in dev mode.
- * In production these are overridden by live data.
+ * Demo fallback rates used only in development when the network fetch fails.
+ * Production never falls back to constants — a stale or missing rate blocks
+ * checkout instead of quoting the wrong amount.
  */
 const FALLBACK_RATES: Record<CoinId, number> = {
   btc: 67000,
   eth: 3500,
   sol: 165
 }
+
+const PROD = import.meta.env.PROD
 
 function readCache(): RatesCache | null {
   try {
@@ -71,7 +74,18 @@ export async function fetchRates(): Promise<Record<CoinId, number>> {
     return usd
   } catch {
     if (cached) return cached.usd
+    if (PROD) throw new Error('Live exchange rates are unavailable — refresh to retry.')
     return { ...FALLBACK_RATES }
+  }
+}
+
+/** Whether the app can currently quote payments (live rates reachable). */
+export async function checkRatesHealthy(): Promise<boolean> {
+  try {
+    await fetchRates()
+    return true
+  } catch {
+    return false
   }
 }
 

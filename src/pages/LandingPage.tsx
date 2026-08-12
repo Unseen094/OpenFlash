@@ -254,9 +254,6 @@ OpenFlash.on('pointerDown', (e) => {
             <Link to="/arcade" className="btn btn-lg">
               <IconPlay size={13} /> Browse Arcade
            </Link>
-            <Link to="/templates" className="btn btn-ghost btn-lg">
-              <IconBolt size={13} /> Templates
-           </Link>
          </div>
 
           <div className="hero-stats">

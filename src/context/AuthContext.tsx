@@ -72,7 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (demoUser) {
-      setIsAdmin(true)
+      setIsAdmin(false)
     }
   }, [demoUser])
 
@@ -151,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem('openflash_demo_user', JSON.stringify(demo))
     } catch { /* noop */ }
     setDemoUser(demo)
-    setIsAdmin(true)
+    setIsAdmin(false)
     setLoading(false)
     return { uid: demo.uid, email: demo.email, displayName: demo.displayName } as User
   }, [])

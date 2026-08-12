@@ -106,3 +106,18 @@ export function activateFreePlan(userId: string, planId: PlanId): PaymentOrder |
   setStatus(order.id, 'paid')
   return getPayment(order.id)
 }
+
+const PLAN_RANK: Record<PlanId, number> = { beta: 0, sigma: 1, alpha: 2 }
+
+/**
+ * The highest plan a user actually holds (has a paid order for), defaulting
+ * to Beta. Callers must use this everywhere plan features are enforced —
+ * never trust a plan passed in by the user or picked from the URL.
+ */
+export function getEffectivePlan(userId: string): Plan {
+  let best: PlanId = 'beta'
+  for (const id of ['sigma', 'alpha'] as PlanId[]) {
+    if (hasPlanEntitlement(userId, id)) best = PLAN_RANK[id] > PLAN_RANK[best] ? id : best
+  }
+  return PLANS[best]
+}

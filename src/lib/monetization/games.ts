@@ -58,11 +58,12 @@ export interface CreateGameInput {
   adsEnabled: boolean
   plan: PublishedGame['plan']
   thumbnail?: string
+  id?: string
 }
 
 export function publishGame(input: CreateGameInput): PublishedGame {
   const game: PublishedGame = {
-    id: `game_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`,
+    id: input.id || `game_${Date.now().toString(36)}_${Math.random().toString(36).substr(2, 6)}`,
     projectId: input.projectId,
     title: input.title,
     description: input.description,
@@ -112,6 +113,40 @@ export function recordDownload(id: string, downloadRevenueUsd: number): void {
     downloads: g.downloads + 1,
     revenueUsd: Math.round((g.revenueUsd + downloadRevenueUsd) * 100) / 100
   })
+}
+
+/**
+ * Book a settled sale. Called exactly once per paid order by `settleOrder`;
+ * idempotency lives in the settlement ledger (payments.ts), not here.
+ */
+export function settleGameSale(id: string, grossUsd: number): void {
+  const g = getPublishedGame(id)
+  if (!g) return
+  updateGame(id, {
+    downloads: g.downloads + 1,
+    revenueUsd: Math.round((g.revenueUsd + grossUsd) * 100) / 100
+  })
+}
+
+/**
+ * Whether the visiting user may play a paid game — derived from paid orders,
+ * never from a client-written flag.
+ */
+export function hasGameEntitlement(userId: string, gameId: string): boolean {
+  if (!userId) return false
+  const raw = localStorage.getItem('openflash_payments')
+  if (!raw) return false
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return false
+    return parsed.some((o: unknown) => {
+      if (!o || typeof o !== 'object') return false
+      const order = o as Record<string, unknown>
+      return order.gameId === gameId && order.status === 'paid'
+    })
+  } catch {
+    return false
+  }
 }
 
 // ─── Server-side games (Phase 8) ──────────────────────────────────────────────

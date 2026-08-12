@@ -3,50 +3,26 @@ import { Link } from 'react-router-dom'
 import { listPublishedGames, recordDownload } from '../lib/monetization/games'
 import { getLeaderboard } from '../lib/monetization/leaderboard'
 import type { PublishedGame } from '../lib/monetization/types'
-import { recordRevenue } from '../lib/monetization/earnings'
-import { getPlan } from '../lib/monetization/plans'
-import AdSlot from '../components/AdSlot'
-import { getSlot, loadAdConfig } from '../lib/monetization/ads'
 import { IconGamepad, IconPlay, IconArrowDown, IconDownload, IconTrophy } from '../components/Icons'
 
 export default function ArcadePage() {
   const [games, setGames] = useState<PublishedGame[]>(listPublishedGames)
-  const [headerSlot] = useState(() => getSlot(loadAdConfig(), 'header'))
-  const [footerSlot] = useState(() => getSlot(loadAdConfig(), 'footer'))
-  const [betweenSlot] = useState(() => getSlot(loadAdConfig(), 'between-content'))
 
   const refresh = () => setGames(listPublishedGames())
 
   const handlePlay = (game: PublishedGame) => {
-    // Ad revenue is attributed here (pre-play ad); PlayPage records the play itself.
-    const plan = getPlan(game.plan)
-    recordRevenue({
-      userId: game.creatorId,
-      gameId: game.id,
-      gameTitle: game.title,
-      type: 'ad',
-      grossUsd: 0.01,
-      creatorSharePct: plan.adRevenueShare
-    })
     refresh()
   }
 
   const handleDownload = (game: PublishedGame) => {
     if (game.priceUsd === 0) {
       recordDownload(game.id, 0)
-      return
+      refresh()
     }
-    // Revenue is recorded only when payment is confirmed (order → paid),
-    // not at click time. See CheckoutPage → payment state machine.
-    recordDownload(game.id, game.priceUsd)
-    refresh()
   }
 
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px', minHeight: 'calc(100vh - 60px)' }}>
-      {/* Header ad */}
-      {headerSlot && <div style={{ marginBottom: 20 }}><AdSlot config={headerSlot} /></div>}
-
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 30, fontWeight: 700, marginBottom: 4 }}>
           Arcade
@@ -55,9 +31,6 @@ export default function ArcadePage() {
           Play games from creators. Free games install instantly — paid games use crypto checkout.
         </p>
       </div>
-
-      {/* Between-content ad */}
-      {betweenSlot && <div style={{ marginBottom: 20 }}><AdSlot config={betweenSlot} /></div>}
 
       {games.length === 0 ? (
         <div className="glass-panel" style={{ padding: 60, textAlign: 'center' }}>
@@ -82,9 +55,6 @@ export default function ArcadePage() {
           ))}
         </div>
       )}
-
-      {/* Footer ad */}
-      {footerSlot && <div style={{ marginTop: 28 }}><AdSlot config={footerSlot} /></div>}
     </div>
   )
 }
@@ -174,8 +144,7 @@ function GameCard({ game, onPlay, onDownload }: {
             </button>
           ) : (
             <Link
-              to={`/checkout?game=${game.id}&title=${encodeURIComponent(game.title)}&price=${game.priceUsd}`}
-              onClick={() => onDownload()}
+              to={`/checkout?game=${game.id}&title=${encodeURIComponent(game.title)}`}
               className="btn btn-primary"
               style={{ flex: 1, padding: '6px 10px', fontSize: 11, textAlign: 'center', textDecoration: 'none' }}
             >

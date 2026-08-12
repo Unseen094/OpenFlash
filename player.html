@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenFlash Player</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; overflow: hidden; }
+      body { background: #fbf8fc; display: flex; align-items: center; justify-content: center; }
+      canvas { display: block; width: 100%; height: auto; max-width: 800px; max-height: 450px; background: #fbf8fc; }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage" width="800" height="450"></canvas>
+    <script type="module" src="/src/player/player.ts"></script>
+  </body>
+</html>

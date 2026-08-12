@@ -14,7 +14,6 @@ const LandingPage = lazy(() => import('./pages/LandingPage'))
 const ArcadePage = lazy(() => import('./pages/ArcadePage'))
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const StudioPage = lazy(() => import('./pages/StudioPage'))
-const TemplatesPage = lazy(() => import('./pages/TemplatesPage'))
 const DocsPage = lazy(() => import('./pages/DocsPage'))
 const CheckoutPage = lazy(() => import('./pages/CheckoutPage'))
 const PlayPage = lazy(() => import('./pages/PlayPage'))
@@ -32,7 +31,6 @@ const routeTitles: Record<string, string> = {
   '/earnings': 'Earnings — OpenFlash',
   '/admin': 'Admin — OpenFlash',
   '/dashboard': 'Creator Hub — OpenFlash',
-  '/templates': 'Templates — OpenFlash',
   '/studio': 'Studio — OpenFlash',
   '/docs': 'Docs — OpenFlash',
   '/login': 'Sign In — OpenFlash',
@@ -113,7 +111,6 @@ export default function App() {
               <Route path="/earnings" element={<ErrorBoundary><RequireAuth><EarningsPage /></RequireAuth></ErrorBoundary>} />
               <Route path="/admin" element={<ErrorBoundary><RequireAuth><AdminPage /></RequireAuth></ErrorBoundary>} />
               <Route path="/dashboard" element={<ErrorBoundary><DashboardPage /></ErrorBoundary>} />
-              <Route path="/templates" element={<ErrorBoundary><TemplatesPage /></ErrorBoundary>} />
               <Route path="/studio" element={<ErrorBoundary><RequireAuth><StudioPage /></RequireAuth></ErrorBoundary>} />
               <Route path="/docs" element={<ErrorBoundary><DocsPage /></ErrorBoundary>} />
               <Route path="/login" element={<ErrorBoundary><AuthPage /></ErrorBoundary>} />

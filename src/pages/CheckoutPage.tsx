@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import QrCode from '../components/QrCode'
-import { IconCheck, IconRefresh, IconArrowRight } from '../components/Icons'
-import { COIN_LIST } from '../lib/monetization/coins'
+import { IconCheck, IconRefresh, IconArrowRight, IconLock } from '../components/Icons'
+import { COIN_LIST, buildPaymentUri, getCoin } from '../lib/monetization/coins'
 import type { CoinId, PaymentOrder } from '../lib/monetization/types'
-import { fetchRates } from '../lib/monetization/rates'
+import { fetchRatesServer } from '../lib/monetization/rates'
 import { createOrder, getPayment, transition } from '../lib/monetization/payments'
-import { monitor } from '../lib/monetization/blockchain'
+import { monitor, isPaymentsEnabled } from '../lib/monetization/blockchain'
 import { getPublishedGame } from '../lib/monetization/games'
 import { getPlan, isPlanId, activateFreePlan } from '../lib/monetization/plans'
 
@@ -20,29 +20,37 @@ export default function CheckoutPage() {
   const planId = searchParams.get('plan') || ''
   const isPlanPurchase = !!planId
 
-  // Resolve price from authoritative source (game/plan data), never from URL.
-  // The URL price param is ignored to prevent price manipulation.
+  // Price is resolved from the authoritative source (game/plan data), never
+  // from a URL parameter — the URL price is ignored to prevent tampering.
   let priceUsd = 0
+  let itemKnown = false
   if (isPlanPurchase && planId) {
-    const plan = isPlanId(planId) ? getPlan(planId) : null
-    priceUsd = plan?.priceUsd ?? 0
+    priceUsd = isPlanId(planId) ? getPlan(planId).priceUsd : 0
+    itemKnown = isPlanId(planId)
   } else if (gameId) {
     const game = getPublishedGame(gameId)
     priceUsd = game?.priceUsd ?? 0
+    itemKnown = Boolean(game && (game.priceUsd > 0 || !game.priceUsd))
   }
   const validPlan = isPlanPurchase && isPlanId(planId) ? planId : null
+  const paymentsEnabled = isPaymentsEnabled()
 
   const itemTitle = isPlanPurchase ? `Plan: ${planId.charAt(0).toUpperCase() + planId.slice(1)}` : gameTitle
 
   const [coin, setCoin] = useState<CoinId>('btc')
   const [rates, setRates] = useState<Record<CoinId, number> | null>(null)
+  const [ratesFailed, setRatesFailed] = useState(false)
   const [order, setOrder] = useState<PaymentOrder | null>(null)
   const [secondsLeft, setSecondsLeft] = useState(0)
   const [copied, setCopied] = useState(false)
 
-  // Load exchange rates once
   useEffect(() => {
-    fetchRates().then(setRates).catch(() => setRates(null))
+    fetchRatesServer()
+      .then(setRates)
+      .catch(() => {
+        setRatesFailed(true)
+        setRates(null)
+      })
   }, [])
 
   // Free plans (e.g. Beta) don't need crypto — activate them instantly.
@@ -52,12 +60,11 @@ export default function CheckoutPage() {
     if (activated) setOrder(activated)
   }
 
-  // Create order when coin & rates are ready.
-  // Deliberately keyed on coin (not `order`) so switching coin tears the old
-  // watcher down before a new order is created. Plan purchases are recorded
-  // with a `plan:<id>` gameId so entitlement survives reloads.
+  // Create order when coin & rates are ready, tear down any watcher from the
+  // previous coin first. Plan purchases record `gameId = plan:<id>` so the
+  // entitlement survives reloads.
   useEffect(() => {
-    if (!rates || !userId || priceUsd <= 0) return
+    if (!rates || !userId || priceUsd <= 0 || !paymentsEnabled) return
     const rate = rates[coin]
     if (!rate) return
     const o = createOrder({
@@ -71,13 +78,14 @@ export default function CheckoutPage() {
     setOrder(o)
     monitor.watch(o, updated => setOrder({ ...updated }))
     return () => { monitor.unwatch(o.id) }
-  }, [rates, coin, userId, gameId, gameTitle, planId, priceUsd, isPlanPurchase])
+  }, [rates, coin, userId, gameId, gameTitle, planId, priceUsd, isPlanPurchase, paymentsEnabled])
 
   const orderId = order?.id
   const expiresAt = order?.expiresAt
 
-  // Countdown timer. Expiry is only applied if the order is still awaiting in
-  // storage — a payment confirmed on the last tick must win the race.
+  // Countdown + expiry. A confirmed payment must win the race: expiry only
+  // applies while the order is still awaiting, or when a detected transaction
+  // has had a generous grace window to confirm.
   useEffect(() => {
     if (!orderId || !expiresAt) return
     const tick = () => {
@@ -85,11 +93,22 @@ export default function CheckoutPage() {
       setSecondsLeft(left)
       if (left > 0) return
       const fresh = getPayment(orderId)
-      if (!fresh || fresh.status !== 'awaiting') return
-      const result = transition(orderId, 'expired')
-      if (result.ok) {
-        monitor.unwatch(orderId)
-        setOrder({ ...result.value })
+      if (!fresh) return
+      if (fresh.status === 'awaiting' || fresh.status === 'detecting') {
+        const result = transition(orderId, 'expired')
+        if (result.ok) {
+          monitor.unwatch(orderId)
+          setOrder({ ...result.value })
+        }
+      } else if (fresh.status === 'confirming') {
+        const graceOver = Date.now() - fresh.expiresAt > 60 * 60 * 1000
+        if (graceOver && fresh.status === 'confirming') {
+          const result = transition(orderId, 'failed')
+          if (result.ok) {
+            monitor.unwatch(orderId)
+            setOrder({ ...result.value })
+          }
+        }
       }
     }
     tick()
@@ -127,12 +146,31 @@ export default function CheckoutPage() {
     detecting: { text: 'Transaction Detected', color: 'var(--accent-cyan)' },
     confirming: { text: 'Confirming…', color: 'var(--accent-cyan)' },
     paid: { text: isPlanPurchase ? 'Plan Activated ✓' : 'Payment Confirmed ✓', color: 'var(--accent-green)' },
-    expired: { text: 'Expired', color: '#FF5F75' },
-    failed: { text: 'Failed', color: '#FF5F75' }
+    expired: { text: 'Expired', color: '#C62828' },
+    failed: { text: 'Failed', color: '#C62828' }
   }
 
   if (!user) {
     return <CheckoutShell><p style={{ color: 'var(--text-secondary)' }}>Please sign in to purchase.</p></CheckoutShell>
+  }
+
+  if (!itemKnown) {
+    return (
+      <CheckoutShell>
+        <div className="panel corner" style={{ padding: 24, maxWidth: 420 }}>
+          <div className="row" style={{ gap: 10, marginBottom: 8 }}>
+            <IconLock size={18} style={{ opacity: 0.6 }} />
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>Item unavailable</h2>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            This item could not be found. It may have been removed from the arcade.
+          </p>
+          <Link to="/arcade" className="btn" style={{ textDecoration: 'none', display: 'inline-flex' }}>
+            <IconArrowRight size={13} /> Back to Arcade
+          </Link>
+        </div>
+      </CheckoutShell>
+    )
   }
 
   if (!Number.isFinite(priceUsd) || priceUsd < 0) {
@@ -155,15 +193,36 @@ export default function CheckoutPage() {
           {order?.status === 'paid' ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <p style={{ fontSize: 13, color: 'var(--accent-green)', fontWeight: 600 }}>Plan Activated ✓</p>
-              <a href="/earnings" className="btn btn-primary" style={{ padding: '10px 16px', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
+              <Link to="/earnings" className="btn btn-primary" style={{ padding: '10px 16px', fontSize: 13, textDecoration: 'none', textAlign: 'center' }}>
                 View Earnings <IconArrowRight size={14} />
-              </a>
+              </Link>
             </div>
           ) : (
             <button onClick={activatePlanNow} className="btn btn-primary" style={{ padding: '10px 16px', fontSize: 13 }}>
               Activate free plan
             </button>
           )}
+        </div>
+      </CheckoutShell>
+    )
+  }
+
+  if (!paymentsEnabled) {
+    return (
+      <CheckoutShell>
+        <div className="panel corner" style={{ padding: 24, maxWidth: 460 }}>
+          <div className="row" style={{ gap: 10, marginBottom: 8 }}>
+            <IconLock size={18} style={{ opacity: 0.6 }} />
+            <h2 style={{ fontSize: 18, fontWeight: 700 }}>Payments are not enabled</h2>
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            This deployment has not configured a payment wallet (VITE_BTC_ADDRESS / VITE_ETH_ADDRESS /
+            VITE_SOL_ADDRESS, plus VITE_ETHERSCAN_KEY for ETH and VITE_SOL_RPC_URL for SOL). Checkout is
+            deliberately disabled so no one can pay into an unverified address.
+          </p>
+          <Link to="/arcade" className="btn" style={{ marginTop: 16, textDecoration: 'none', display: 'inline-flex' }}>
+            <IconArrowRight size={13} /> Back to Arcade
+          </Link>
         </div>
       </CheckoutShell>
     )
@@ -180,7 +239,7 @@ export default function CheckoutPage() {
             Purchasing <strong style={{ color: 'var(--text-primary)' }}>{itemTitle}</strong> · ${priceUsd.toFixed(2)} USD
           </p>
           <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-            Send crypto to the address below. Payment will be detected automatically.
+            Send crypto to the address below. Payment is detected directly on-chain — no manual verification.
           </p>
         </div>
 
@@ -201,7 +260,12 @@ export default function CheckoutPage() {
           </div>
         </div>
 
-        {!rates && <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Loading exchange rates…</p>}
+        {!rates && !ratesFailed && <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Fetching live exchange rates…</p>}
+        {ratesFailed && (
+          <div style={{ padding: '10px 14px', border: '2px solid #C62828', borderRadius: 'var(--radius-md)', fontSize: 12, color: '#C62828' }}>
+            Live exchange rates are unavailable right now. Checkout is paused so amounts stay accurate — refresh to retry.
+          </div>
+        )}
 
         {order && rates && rate && (
           <>
@@ -225,14 +289,19 @@ export default function CheckoutPage() {
               }}>
                 {statusLabel[order.status]?.text || order.status}
               </span>
-              {order.status === 'awaiting' && (
+              {(order.status === 'awaiting' || order.status === 'detecting') && (
                 <span style={{
                   fontFamily: 'var(--font-mono)',
                   fontSize: 14,
                   fontWeight: 700,
-                  color: secondsLeft < 120 ? '#FF5F75' : 'var(--accent-yellow)'
+                  color: secondsLeft < 120 ? '#C62828' : 'var(--accent-yellow)'
                 }}>
                   {formatTime(secondsLeft)}
+                </span>
+              )}
+              {order.status === 'confirming' && (
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+                  {order.confirmations} / {order.requiredConfirmations} confirmations
                 </span>
               )}
             </div>
@@ -246,11 +315,11 @@ export default function CheckoutPage() {
             }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
                 <QrCode
-                  data={`${COIN_LIST.find(c => c.id === coin)?.uriScheme}${order.address}?amount=${order.amountCrypto}`}
+                  data={buildPaymentUri(coin, order.address, order.amountCrypto, order.id)}
                   size={180}
                 />
                 <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                  Scan to pay
+                  Scan to pay · {getCoin(coin).network}
                 </span>
               </div>
 
@@ -282,9 +351,9 @@ export default function CheckoutPage() {
                     </button>
                   </div>
                 </Field>
-                <Field label="Exchange rate">
+                <Field label="Exchange rate (locked for this order)">
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-secondary)' }}>
-                    1 {coin.toUpperCase()} = ${rate.toLocaleString()} USD
+                    1 {coin.toUpperCase()} = ${rate.toLocaleString(undefined, { maximumFractionDigits: 2 })} USD
                   </span>
                 </Field>
                 {order.txHash && (
@@ -292,13 +361,6 @@ export default function CheckoutPage() {
                     <code style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--accent-cyan)', wordBreak: 'break-all' }}>
                       {order.txHash}
                     </code>
-                  </Field>
-                )}
-                {order.status === 'confirming' && (
-                  <Field label="Confirmations">
-                    <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>
-                      {order.confirmations} / {order.requiredConfirmations}
-                    </span>
                   </Field>
                 )}
               </div>
@@ -312,13 +374,13 @@ export default function CheckoutPage() {
               {order.status === 'paid' && (
                 <div style={{ display: 'flex', gap: 8 }}>
                   {isPlanPurchase ? (
-                    <a href="/earnings" className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
+                    <Link to="/earnings" className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
                       View Earnings <IconArrowRight size={13} />
-                    </a>
+                    </Link>
                   ) : (
-                    <a href={`/play/${gameId}`} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
+                    <Link to={`/play/${gameId}`} className="btn btn-primary" style={{ padding: '6px 14px', fontSize: 12, textDecoration: 'none' }}>
                       Play now <IconArrowRight size={13} />
-                    </a>
+                    </Link>
                   )}
                 </div>
               )}
